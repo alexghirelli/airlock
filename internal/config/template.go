@@ -1,0 +1,89 @@
+package config
+
+// Template is the commented user config written by `airlock config init`.
+// A test checks that it decodes strictly and equals the built-in defaults.
+const Template = `# airlock user configuration.
+# Precedence: built-in defaults < this file < <project>/.airlock.toml < CLI flags < AIRLOCK_* env vars.
+# The project file is untrusted: it can only tighten limits and pick a few
+# harmless options (see docs/configuration.md). Everything below is yours.
+
+[sandbox]
+lifetime = "persistent"          # persistent | ephemeral
+ui = "herdr"                     # herdr | pi | shell
+backend = "container"            # container | gvisor | microvm | vm
+memory = "8g"
+cpus = 4
+pids = 2048
+worktrees_dir = ".worktrees"     # "" disables worktree support
+
+[network]
+mode = "open-no-lan"             # open-no-lan | allowlist | open
+allow = []                       # extra domains when mode = "allowlist"
+allow_cidrs = []                 # holes in the LAN block, e.g. a local registry: ["192.168.1.50/32"]
+
+[credentials]
+scope = "shared"                 # shared (one login volume for all projects) | per-project
+
+[git]
+mode = "local"                   # local | push
+token_env = ""                   # host env var holding a token, used only when mode = "push"
+hosts = ["github.com"]           # hosts the token is offered to
+
+[pi]
+version = "latest-pinned"        # or an exact version such as "1.5.2"
+packages = []                    # Pi packages to install, e.g. ["npm:pi-claude-bridge@0.11.0"]
+default_model = ""               # e.g. "anthropic/claude-opus-5-5"; empty = Pi's default
+# settings = { quietStartup = true }   # merged into Pi's settings.json
+
+[extras]
+claude_code = "auto"             # auto (when a Pi package needs it) | true | false
+apt = []                         # extra Debian packages baked into the local image
+mise = []                        # e.g. ["node@22"], preinstalled globally
+
+# Environment variables passed from the host into the sandbox (stored in the
+# container's configuration; see docs/security.md):
+# [env]
+# OPENCODE_API_KEY = { from_host_env = "OPENCODE_API_KEY" }
+
+# Extra folders shared with the sandbox, mounted at /mnt/<name>. Zero or more.
+# [[mount]]
+# name = "notes"
+# host = "~/notes"
+# mode = "rw"                    # ro | rw
+# description = "Personal knowledge base. Read its README first."
+#
+# [[mount]]
+# name = "skills"
+# host = "~/agent-skills"
+# mode = "ro"
+# skills = "."                   # load Pi skills from this folder inside the mount
+
+# Remote knowledge sources, added to Pi's MCP config. Header values name host
+# environment variables; the values themselves never touch this file.
+# [[mcp]]
+# name = "docs"
+# url = "https://example.com/mcp"
+# description = "Product documentation"
+# headers = { Authorization = "DOCS_MCP_AUTH" }
+
+# agents_md_append = "~/airlock-agents-extra.md"   # appended to the generated global agent instructions
+
+[team]
+enabled = false
+profiles_dir = ""                # empty = built-in profiles
+default_roles = ["reviewer", "tester", "scout", "scribe"]
+
+[team.models]                    # role -> model; empty = pi.default_model
+# lead = ""
+# reviewer = ""
+
+[team.thinking]
+lead = "high"
+reviewer = "high"
+tester = "medium"
+scout = "medium"
+scribe = "low"
+
+[audit]
+extra_patterns = []              # more files to report on, gitignore syntax
+`
