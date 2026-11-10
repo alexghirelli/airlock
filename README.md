@@ -186,18 +186,22 @@ What it does **not** protect against:
 ## Development
 
 ```sh
-go test ./...                                                # unit tests
-go test -tags integration -timeout 30m ./tests/...           # needs Docker and internet
+go test ./...                                                # unit tests, a few seconds
+go test -tags integration -timeout 15m ./tests/...           # needs Docker and internet
+AIRLOCK_IT_SLOW=1 go test -tags integration -run Packages ./tests/...   # the slow, network-heavy test
 ```
 
-The integration tests build the image and cover: isolation (with a positive
-control, so a missing firewall would be noticed), capability dropping, ownership,
-protected git files, worktrees, untrusted project config, same-name projects,
-mounts, persistence, Pi packages, Herdr attach/detach/reattach through a real
-pseudo-terminal, `.airlockignore`, `audit`, git modes and `doctor`.
+The integration tests build the image once (about three minutes the first time) and
+then take about a minute. They cover: isolation (with a positive control, so a
+missing firewall would be noticed), capability dropping, ownership, protected git
+files, worktrees, untrusted project config, same-name projects, mounts,
+persistence, Herdr attach/detach/reattach through a real pseudo-terminal,
+`.airlockignore`, `audit`, git modes and `doctor`. The test that installs Pi
+packages and Claude Code is opt-in (`AIRLOCK_IT_SLOW=1`) and runs weekly in CI.
 
-The integration tests use disk (the image is about 1.3 GB, 1.8 GB with Claude
-Code). airlock removes superseded `airlock:*` image tags after each build.
+The tests set `AIRLOCK_PRUNE_IMAGES=0` so the several image variants they build
+survive each other. Normally airlock removes superseded `airlock:*` tags after a
+build; the image is about 1.3 GB (1.8 GB with Claude Code).
 
 ## Licence
 
