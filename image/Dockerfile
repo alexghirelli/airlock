@@ -82,6 +82,10 @@ COPY session.sh /usr/local/bin/airlock-session
 COPY herdr-up.sh /usr/local/bin/airlock-herdr-up
 RUN chmod 0755 /usr/local/sbin/airlock-entrypoint /usr/local/bin/airlock-init /usr/local/bin/airlock-session /usr/local/bin/airlock-herdr-up
 
+# Earlier root-run steps may have created files under the agent's home (mise
+# needs a writable ~/.cache, for one); hand it all back.
+RUN chown -R agent:agent /home/agent
+
 USER root
 WORKDIR /
 ENTRYPOINT ["/usr/local/sbin/airlock-entrypoint"]
