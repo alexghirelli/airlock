@@ -197,7 +197,11 @@ missing firewall would be noticed), capability dropping, ownership, protected gi
 files, worktrees, untrusted project config, same-name projects, mounts,
 persistence, Herdr attach/detach/reattach through a real pseudo-terminal,
 `.airlockignore`, `audit`, git modes and `doctor`. The test that installs Pi
-packages and Claude Code is opt-in (`AIRLOCK_IT_SLOW=1`) and runs weekly in CI.
+packages and Claude Code is opt-in (`AIRLOCK_IT_SLOW=1`).
+
+CI runs only the fast checks on every push (formatting, vet, unit tests,
+cross-compilation). The integration tests run weekly, and on demand from the
+Actions tab (the `integration` workflow).
 
 The tests set `AIRLOCK_PRUNE_IMAGES=0` so the several image variants they build
 survive each other. Normally airlock removes superseded `airlock:*` tags after a

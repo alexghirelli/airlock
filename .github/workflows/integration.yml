@@ -1,0 +1,32 @@
+name: integration
+
+# Builds the real sandbox image and starts real sandboxes: isolation, git,
+# mounts, Herdr, audit and so on. It takes a few minutes, so it does not run on
+# every push. Run it from the Actions tab before a release, or wait for the
+# weekly run. (It has so far only been run on a developer machine.)
+on:
+  schedule:
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+    inputs:
+      slow:
+        description: 'Also run the slow tests (Pi packages, Claude Code download)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      # The weekly run always includes the slow tests.
+      AIRLOCK_IT_SLOW: ${{ (github.event_name == 'schedule' || inputs.slow) && '1' || '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go test -tags integration -timeout 35m ./tests/...

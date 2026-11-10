@@ -13,6 +13,8 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Fast checks only. The integration tests (real containers, a real image) live in
+# integration.yml and run on demand and weekly.
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -32,44 +34,3 @@ jobs:
           for t in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
             GOOS=${t%/*} GOARCH=${t#*/} CGO_ENABLED=0 go build -o /dev/null ./cmd/airlock
           done
-
-  # Builds the real image and starts real sandboxes. It runs alongside `test`,
-  # not after it. The image is the slow part (about three minutes), so it is
-  # cached: its tag depends only on the image sources and the fixed test version,
-  # and the cache key covers the same files. The slow, network-heavy tests live in
-  # integration-slow.yml. Only run on a developer machine and here so far, so it
-  # may not fail the workflow until it has a track record.
-  integration:
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    timeout-minutes: 20
-    env:
-      IMAGE_ARCHIVE: ${{ runner.temp }}/airlock-image.tar.zst
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - name: restore the sandbox image
-        id: image
-        uses: actions/cache/restore@v4
-        with:
-          path: ${{ runner.temp }}/airlock-image.tar.zst
-          key: airlock-image-${{ hashFiles('image/**', 'team/**', 'assets.go', 'internal/imagebuild/**', 'internal/config/**') }}
-      - name: load the cached image
-        if: steps.image.outputs.cache-hit == 'true'
-        run: zstd -dc "$IMAGE_ARCHIVE" | docker load
-      - name: integration tests
-        run: go test -tags integration -timeout 15m ./tests/...
-      - name: pack the image for the cache
-        if: always() && steps.image.outputs.cache-hit != 'true'
-        run: |
-          imgs="$(docker image ls --format '{{.Repository}}:{{.Tag}}' | grep '^airlock:' || true)"
-          if [ -n "$imgs" ]; then docker save $imgs | zstd -T0 -3 -o "$IMAGE_ARCHIVE"; fi
-      - name: save the image cache
-        if: always() && steps.image.outputs.cache-hit != 'true'
-        continue-on-error: true
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ runner.temp }}/airlock-image.tar.zst
-          key: ${{ steps.image.outputs.cache-primary-key }}
