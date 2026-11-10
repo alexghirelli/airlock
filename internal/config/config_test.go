@@ -100,6 +100,10 @@ func TestValidation(t *testing.T) {
 		"bad thinking":    "[team.thinking]\nscout = \"turbo\"\n",
 		"lead as default": "[team]\ndefault_roles = [\"lead\"]\n",
 		"bad mcp url":     "[[mcp]]\nname=\"x\"\nurl=\"ftp://x\"\n",
+		"mcp url+command": "[[mcp]]\nname=\"x\"\nurl=\"https://x\"\ncommand=\"node\"\n",
+		"mcp neither":     "[[mcp]]\nname=\"x\"\n",
+		"mcp args on url": "[[mcp]]\nname=\"x\"\nurl=\"https://x\"\nargs=[\"a\"]\n",
+		"mcp bad env":     "[[mcp]]\nname=\"x\"\ncommand=\"node\"\nenv={\"A B\"=\"1\"}\n",
 	}
 	for name, cfg := range cases {
 		if _, err := load(t, cfg, "", nil); err == nil {

@@ -58,13 +58,24 @@ mise = []                        # e.g. ["node@22"], preinstalled globally
 # mode = "ro"
 # skills = "."                   # load Pi skills from this folder inside the mount
 
-# Remote knowledge sources, added to Pi's MCP config. Header values name host
-# environment variables; the values themselves never touch this file.
+# MCP servers, added to Pi's MCP config. A remote server has a url; header
+# values name host environment variables, so secrets never touch this file.
 # [[mcp]]
 # name = "docs"
 # url = "https://example.com/mcp"
 # description = "Product documentation"
 # headers = { Authorization = "DOCS_MCP_AUTH" }
+#
+# A local server is a command started inside the sandbox. Its code must be
+# reachable there (a [[mount]] below, e.g. /mnt/tools/...) and its runtime must
+# exist in the image (e.g. extras.mise = ["node@22"]). env holds literal
+# values; env_from_host maps a variable to a host variable, for secrets.
+# [[mcp]]
+# name = "tracker"
+# command = "node"
+# args = ["/mnt/tools/mcp-tracker/src/index.js"]
+# env = { TRACKER_USER = "alice" }
+# env_from_host = { TRACKER_TOKEN = "TRACKER_TOKEN" }
 
 # agents_md_append = "~/airlock-agents-extra.md"   # appended to the generated global agent instructions
 

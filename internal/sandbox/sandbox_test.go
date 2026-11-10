@@ -590,3 +590,26 @@ func TestAllowlistModeFailsClearlyUntilImplemented(t *testing.T) {
 		t.Fatalf("want a clear 'not implemented' error, got %v", err)
 	}
 }
+
+func TestMCPCommandServer(t *testing.T) {
+	proj := newProject(t)
+	toml := "[[mcp]]\nname=\"tracker\"\ncommand=\"node\"\nargs=[\"/mnt/t/index.js\"]\nenv={USER_NAME=\"alice\"}\nenv_from_host={TOKEN=\"TRACKER_TOKEN\"}\n"
+	plan := testPlan(t, toml, proj, map[string]string{"TRACKER_TOKEN": "s3cret"})
+	var manifest string
+	for _, f := range plan.Files {
+		if f.Path == "/etc/airlock/manifest.json" {
+			manifest = string(f.Data)
+		}
+	}
+	for _, want := range []string{`"command": "node"`, `/mnt/t/index.js`, `"USER_NAME": "alice"`, `"TOKEN": "${TRACKER_TOKEN}"`} {
+		if !strings.Contains(strings.ReplaceAll(manifest, `":"`, `": "`), want) {
+			t.Errorf("manifest lacks %s:\n%s", want, manifest)
+		}
+	}
+	if strings.Contains(manifest, "s3cret") {
+		t.Error("secret value leaked into the manifest")
+	}
+	if !strings.Contains(strings.Join(plan.Spec.Env, "\n"), "TRACKER_TOKEN=s3cret") {
+		t.Error("secret not forwarded through the container environment")
+	}
+}

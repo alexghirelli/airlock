@@ -111,7 +111,24 @@ name = "skills"
 host = "~/agent-skills"
 mode = "ro"
 skills = "."                                   # load Pi skills from here
+
+[[mcp]]                                        # remote MCP server
+name = "docs"
+url = "https://example.com/mcp"
+headers = { Authorization = "DOCS_MCP_AUTH" }  # host env var holding the value
+
+[[mcp]]                                        # local (stdio) MCP server
+name = "tracker"
+command = "node"
+args = ["/mnt/tools/mcp-tracker/src/index.js"] # code comes in through a mount
+env = { TRACKER_USER = "alice" }
+env_from_host = { TRACKER_TOKEN = "TRACKER_TOKEN" }   # secrets stay out of the file
 ```
+
+A local MCP server runs inside the Linux sandbox, so its code must be mounted
+and its runtime must exist there: add `extras.mise = ["node@22", "python@3.12"]`
+as needed. A virtualenv or compiled `node_modules` built on macOS will not run
+in Linux; create them from inside the sandbox instead.
 
 Agents are told about the sandbox, the network policy, git rules and every mount
 through a generated `/AGENTS.md`. Verify model ids with `pi --list-models` inside
@@ -179,7 +196,7 @@ What it does **not** protect against:
 | `--team` | The Herdr bootstrap and team scripts are written, but not verified end to end. Treat as experimental. |
 | `microvm` / `vm` backends | Rejected by the CLI. `gvisor` starts the container with `runsc` but has not been run through the test suite. |
 | `airlock login` | Runs Pi's and Claude Code's own login flows; checked up to the credential prompt only (no real login was made). `--reset` is untested. |
-| `[[mcp]]` | Written into Pi's MCP config; not tested against a real server. |
+| `[[mcp]]` | Written into Pi's MCP config (remote and stdio servers); the entry and the mounted command are tested, but not a full session against a real MCP server. |
 | A published container image | The image is built locally on first run. |
 | Windows and macOS | The release archives compile for them, but airlock has only been run on Linux. |
 

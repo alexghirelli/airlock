@@ -89,13 +89,21 @@ type Mount struct {
 	Skills      string `toml:"skills"` // subfolder to load Pi skills from; "." = the mount root
 }
 
-// MCP is a remote knowledge source added to Pi's MCP config.
+// MCP is an MCP server added to Pi's MCP config: remote (url) or a local
+// process started inside the sandbox (command).
 type MCP struct {
 	Name        string `toml:"name"`
 	URL         string `toml:"url"`
 	Description string `toml:"description"`
-	// Headers maps a header name to the host env var holding its value.
+	// Headers maps a header name to the host env var holding its value (url servers).
 	Headers map[string]string `toml:"headers"`
+	// Command, Args and Env start a stdio server inside the sandbox. Env holds
+	// literal values; EnvFromHost maps a variable name to the host env var that
+	// holds its value, for secrets.
+	Command     string            `toml:"command"`
+	Args        []string          `toml:"args"`
+	Env         map[string]string `toml:"env"`
+	EnvFromHost map[string]string `toml:"env_from_host"`
 }
 
 type Team struct {

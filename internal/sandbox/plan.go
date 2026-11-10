@@ -171,7 +171,32 @@ func BuildPlan(in PlanInput) (*Plan, error) {
 	// ---- MCP ----
 	mcp := map[string]any{}
 	for _, s := range c.MCP {
-		entry := map[string]any{"url": s.URL}
+		entry := map[string]any{}
+		if s.Command != "" {
+			entry["command"] = s.Command
+			if len(s.Args) > 0 {
+				entry["args"] = s.Args
+			}
+			childEnv := map[string]string{}
+			for k, v := range s.Env {
+				childEnv[k] = v
+			}
+			for k, hostName := range s.EnvFromHost {
+				v, ok := hostEnv(hostName)
+				if !ok {
+					warn("mcp %s: host variable %s is not set; %s skipped", s.Name, hostName, k)
+					continue
+				}
+				env[hostName] = v
+				secret[hostName] = true
+				childEnv[k] = "${" + hostName + "}"
+			}
+			if len(childEnv) > 0 {
+				entry["env"] = childEnv
+			}
+		} else {
+			entry["url"] = s.URL
+		}
 		if s.Description != "" {
 			entry["description"] = s.Description
 		}

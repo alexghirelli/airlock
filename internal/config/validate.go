@@ -161,8 +161,37 @@ func (c *Config) Validate() error {
 			add(fmt.Errorf("%s.name: duplicate server name %q", where, s.Name))
 		}
 		seen[s.Name] = true
-		if !strings.HasPrefix(s.URL, "https://") && !strings.HasPrefix(s.URL, "http://") {
+		switch {
+		case s.URL != "" && s.Command != "":
+			add(fmt.Errorf("%s: set either url (remote server) or command (local server), not both", where))
+		case s.URL == "" && s.Command == "":
+			add(fmt.Errorf("%s: set url (remote server) or command (local server)", where))
+		case s.URL != "" && !strings.HasPrefix(s.URL, "https://") && !strings.HasPrefix(s.URL, "http://"):
 			add(fmt.Errorf("%s.url: %q must be an http(s) URL", where, s.URL))
+		}
+		if s.URL != "" && (len(s.Args) > 0 || len(s.Env) > 0 || len(s.EnvFromHost) > 0) {
+			add(fmt.Errorf("%s: args, env and env_from_host only apply to command servers", where))
+		}
+		if s.Command != "" && len(s.Headers) > 0 {
+			add(fmt.Errorf("%s: headers only apply to url servers", where))
+		}
+		if strings.ContainsAny(s.Command, "\x00\n\r") {
+			add(fmt.Errorf("%s.command contains control characters", where))
+		}
+		for _, a := range s.Args {
+			if strings.ContainsAny(a, "\x00") {
+				add(fmt.Errorf("%s.args: an argument contains a NUL byte", where))
+			}
+		}
+		for k, v := range s.Env {
+			if !envNameRe.MatchString(k) || strings.ContainsAny(v, "\x00") {
+				add(fmt.Errorf("%s.env: %q is not a valid variable", where, k))
+			}
+		}
+		for k, v := range s.EnvFromHost {
+			if !envNameRe.MatchString(k) || !envNameRe.MatchString(v) {
+				add(fmt.Errorf("%s.env_from_host: %s = %q must map a variable name to a host variable name", where, k, v))
+			}
 		}
 		for h, v := range s.Headers {
 			if strings.ContainsAny(h, " :\r\n") || h == "" {
