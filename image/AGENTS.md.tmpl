@@ -1,0 +1,80 @@
+<!-- managed by airlock; regenerated at every start -->
+# Environment: airlock sandbox
+
+You are running inside **airlock**, an isolated container made for this project.
+This file is generated at every start; do not edit it.
+
+## Where you are
+
+- The project is at `{{.ProjectDir}}`: the same path as on the user's computer.
+  It is shared with the host, so everything you write there appears on the
+  user's machine. Everything outside the project and the mounts below is the
+  container's own filesystem.
+- The container is {{if .Persistent}}persistent: tools you install stay when it is stopped and started again, and are lost only when the user removes it (`airlock rm`){{else}}ephemeral: it is thrown away when it stops. Anything outside the project and the mounts below is lost{{end}}.
+- You have passwordless `sudo` inside the container only. Docker is not available inside it.
+
+## Network
+
+{{.NetworkText}}
+Do not try to work around the firewall; it is part of the user's safety setup.
+If a task needs something that is blocked, say so and let the user decide.
+
+## Toolchains
+
+Install only what the project needs, and prefer the project's own version files.
+
+- **Node, Python, Go, Ruby, Java, Bun, Deno, …**: use `mise`.
+  - If the project declares versions (`mise.toml`, `.tool-versions`, `.nvmrc`,
+    `.node-version`, `.python-version`, …), run `mise install`.
+  - Otherwise install container-wide with `mise use -g node@22` (or the version the
+    project's docs or `package.json` engines ask for). Do **not** add a
+    `mise.toml` to the repository unless the user asks.
+  - Then use the project's package manager as usual (`npm ci`, `pnpm install`,
+    `pip install -r …`).
+- **PHP**: use Debian packages (`sudo apt-get update && sudo apt-get install -y php-cli composer`)
+  plus the extensions the project needs (`php-mbstring php-xml php-curl php-intl
+  php-zip php-mysql php-sqlite3 php-gd …`). Check `composer.json` (`require`, `ext-*`).
+- **Databases and services** (MariaDB, PostgreSQL, Redis, …): install with `apt`
+  and run them inside the container if tests need them.
+
+Report what you installed so the user can bake it into a project image later.
+
+## Git
+
+{{.GitText}}
+{{if .WorktreesDir}}
+### Worktrees
+
+Use `git worktree` for parallel or risky work. Create worktrees only under
+`{{.ProjectDir}}/{{.WorktreesDir}}/<name>`, one branch per worktree:
+
+    git worktree add {{.WorktreesDir}}/<name> -b <branch>
+
+That directory is excluded from git. Remove a worktree with `git worktree remove`
+when its work is merged or abandoned.
+{{end}}
+## Files that run on the user's computer
+
+Some files in the project are executed or loaded automatically by tools on the
+user's computer: git hooks, `.envrc`, `.vscode/` and `.idea/` settings,
+`Makefile`, the `scripts` in `package.json` and `composer.json`, CI workflows.
+`.git/hooks` and `.git/config` are read-only here. Change the others only when
+the task requires it, and say so in your summary: the user will review them.
+{{if .Mounts}}
+## Mounted folders
+
+These folders from the user's computer are available to you:
+{{range .Mounts}}
+- `{{.Path}}` ({{.Mode}}){{if .Description}}: {{.Description}}{{end}}{{if .Skills}}
+  Pi skills are loaded from `{{.SkillsPath}}`.{{end}}{{end}}
+
+Respect each mode: do not write to a folder marked `ro`.
+{{end}}{{if .MCP}}
+## Remote knowledge sources (MCP)
+
+These MCP servers are configured for you:
+{{range .MCP}}
+- `{{.Name}}`{{if .Description}}: {{.Description}}{{end}}{{end}}
+{{end}}{{if .Append}}
+{{.Append}}
+{{end}}
