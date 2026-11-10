@@ -157,7 +157,6 @@ What it does **not** protect against:
 | `[[mcp]]` | Written into Pi's MCP config; not tested against a real server. |
 | Release binaries, install script, CI, published image | Build from source for now. |
 | Windows and macOS | Written to be portable, tested only on Linux. |
-| Licence | Not chosen yet. |
 
 ## Development
 
@@ -174,3 +173,11 @@ pseudo-terminal, `.airlockignore`, `audit`, git modes and `doctor`.
 
 The integration tests use disk (the image is about 1.3 GB, 1.8 GB with Claude
 Code). airlock removes superseded `airlock:*` image tags after each build.
+
+## Licence
+
+Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+The image downloads Pi, Herdr, mise and (only when a configured package needs it)
+Claude Code at build time; each keeps its own licence and terms. Claude Code is
+proprietary, so a published image must not bundle it.
