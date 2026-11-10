@@ -60,8 +60,12 @@ want="$(grep "  $file\$" "$tmp/SHA256SUMS" | cut -d' ' -f1)"
 
 tar -xzf "$tmp/$file" -C "$tmp"
 mkdir -p "$dir"
-cp "$tmp/airlock_${version}_${os}_${arch}/airlock" "$dir/airlock"
-chmod 0755 "$dir/airlock"
+# Write a new file and rename it over the old one. Overwriting a running or
+# previously run binary in place makes macOS kill it at the next launch
+# ("zsh: killed"), because the cached code signature no longer matches.
+cp "$tmp/airlock_${version}_${os}_${arch}/airlock" "$dir/.airlock.new.$$"
+chmod 0755 "$dir/.airlock.new.$$"
+mv -f "$dir/.airlock.new.$$" "$dir/airlock"
 printf 'Installed %s\n' "$dir/airlock"
 
 case ":$PATH:" in
