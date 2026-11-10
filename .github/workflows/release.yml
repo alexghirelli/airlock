@@ -1,0 +1,31 @@
+name: release
+
+# Push a tag such as v0.1.0 to publish a release.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: check
+        run: go vet ./... && go test ./...
+      - name: build archives
+        run: scripts/build-release.sh "$GITHUB_REF_NAME"
+      - name: publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "airlock $GITHUB_REF_NAME" \
+            --verify-tag \
+            --generate-notes \
+            --notes "Early release. Tested on Linux only: the macOS and Windows archives compile but have not been run. Install with install.sh (see the README). The sandbox image is built on your machine the first time you run airlock."
