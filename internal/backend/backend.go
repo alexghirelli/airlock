@@ -132,6 +132,9 @@ type Backend interface {
 	ImageTags(ctx context.Context, repo string) ([]string, error)
 	// RemoveImageTag untags an image; images in use by a container are kept.
 	RemoveImageTag(ctx context.Context, ref string) error
+	// PruneImages deletes untagged images that airlock built and no container
+	// uses. Images airlock did not build are never touched.
+	PruneImages(ctx context.Context) error
 	BuildImage(ctx context.Context, req BuildRequest) error
 
 	Create(ctx context.Context, spec Spec) error

@@ -144,6 +144,8 @@ func (m *Manager) pruneOldImages(ctx context.Context, keep imagePlan) {
 			_ = m.B.RemoveImageTag(ctx, t)
 		}
 	}
+	// Untagged leftovers of earlier builds (a sandbox held them until now).
+	_ = m.B.PruneImages(ctx)
 }
 
 type imagePlan struct{ Base, Run string }
@@ -326,6 +328,8 @@ func (m *Manager) Up(ctx context.Context) (created bool, err error) {
 				return false, err
 			}
 			info = nil
+			// The old sandbox no longer pins its image; free it now.
+			m.pruneOldImages(ctx, images)
 		}
 	}
 

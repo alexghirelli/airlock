@@ -155,6 +155,12 @@ func (d *Docker) RemoveImageTag(ctx context.Context, ref string) error {
 	return nil
 }
 
+func (d *Docker) PruneImages(ctx context.Context) error {
+	f := client.Filters{}.Add("dangling", "true").Add("label", LabelManaged+"=true")
+	_, err := d.cli.ImagePrune(ctx, client.ImagePruneOptions{Filters: f})
+	return err
+}
+
 func (d *Docker) BuildImage(ctx context.Context, req BuildRequest) error {
 	args := map[string]*string{}
 	for k, v := range req.Args {
