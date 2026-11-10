@@ -12,15 +12,17 @@ import (
 func TestMiseToolsAreOnPathForMCPCommands(t *testing.T) {
 	p := newProject(t, "misemcp", `
 [extras]
-mise = ["node@22"]
+mise = ["node@22", "python@3.12"]
 
 [[mcp]]
 name = "n"
 command = "node"
 args = ["-e", "console.log('mcp ok')"]
 `)
-	out := p.mustSh(`command -v node; node -e "console.log('mcp ok')"; echo PATH=$PATH; ls ~/.local/share/mise/shims`)
-	if !strings.Contains(out, "mcp ok") {
-		t.Fatalf("node is not runnable inside the sandbox:\n%s", out)
+	out := p.mustSh(`node -e "console.log('node ok')"; python -c "print('python ok')"; ls ~/.local/share/mise/shims`)
+	for _, want := range []string{"node ok", "python ok"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("every extras.mise tool must be installed; missing %q:\n%s", want, out)
+		}
 	}
 }
