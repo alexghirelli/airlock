@@ -249,6 +249,9 @@ func BuildPlan(in PlanInput) (*Plan, error) {
 		{Path: "/etc/airlock/models.env", Data: []byte(modelsEnv(c))},
 		{Path: "/etc/airlock/pi.args", Data: []byte(piArgs(c, mountInfos))},
 	}
+	if c.Agents.Concise {
+		plan.Files = append(plan.Files, backend.File{Path: conciseSkillPath + "/SKILL.md", Data: []byte(mustAsset("image/skills/concise/SKILL.md"))})
+	}
 	profiles, err := teamProfiles(c)
 	if err != nil {
 		return nil, err
@@ -377,6 +380,9 @@ func piSettings(c *config.Config) map[string]any {
 // arguments: one per line, so values may contain spaces.
 func piArgs(c *config.Config, mounts []mountInfo) string {
 	var b strings.Builder
+	if c.Agents.Concise {
+		fmt.Fprintf(&b, "--skill\n%s\n", conciseSkillPath)
+	}
 	for _, m := range mounts {
 		if m.SkillsPath != "" {
 			fmt.Fprintf(&b, "--skill\n%s\n", m.SkillsPath)
@@ -417,11 +423,27 @@ func renderAgentsMD(c *config.Config, p *Project, mounts []mountInfo, mcp []mcpI
 		"MCP":          mcp,
 		"Append":       append_,
 	}
+	if c.Agents.Concise {
+		data["Concise"] = skillBody(mustAsset("image/skills/concise/SKILL.md"))
+	}
 	var buf bytes.Buffer
 	if err := agentsTmpl.Execute(&buf, data); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// conciseSkillPath is where the built-in skill is written inside the sandbox.
+const conciseSkillPath = "/etc/airlock/skills/concise"
+
+// skillBody returns a skill's text without its front matter.
+func skillBody(skill string) string {
+	if rest, ok := strings.CutPrefix(skill, "---\n"); ok {
+		if _, body, found := strings.Cut(rest, "\n---\n"); found {
+			skill = body
+		}
+	}
+	return strings.TrimSpace(skill)
 }
 
 func networkText(c *config.Config) string {

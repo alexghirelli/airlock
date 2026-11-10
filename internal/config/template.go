@@ -108,6 +108,9 @@ tester = "medium"
 scout = "medium"
 scribe = "low"
 
+[agents]
+concise = true                   # built-in "concise replies" skill, on for every agent
+
 [audit]
 extra_patterns = []              # more files to report on, gitignore syntax
 `

@@ -75,6 +75,10 @@ Respect each mode: do not write to a folder marked `ro`.
 These MCP servers are configured for you:
 {{range .MCP}}
 - `{{.Name}}`{{if .Description}}: {{.Description}}{{end}}{{end}}
+{{end}}{{if .Concise}}
+## Reply style
+
+{{.Concise}}
 {{end}}{{if .Append}}
 {{.Append}}
 {{end}}

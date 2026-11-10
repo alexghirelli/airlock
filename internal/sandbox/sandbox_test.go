@@ -276,7 +276,7 @@ func TestPlanMountsAndAgentsMD(t *testing.T) {
 			piArgs = string(f.Data)
 		}
 	}
-	if piArgs != "--skill\n/mnt/skills/sub\n" {
+	if piArgs != "--skill\n/etc/airlock/skills/concise\n--skill\n/mnt/skills/sub\n" {
 		t.Errorf("pi.args = %q", piArgs)
 	}
 	if strings.Contains(manifest, "/mnt/skills") {
@@ -389,7 +389,7 @@ func TestPiArgsCarryDefaultModelNotSharedSettings(t *testing.T) {
 			manifest = string(f.Data)
 		}
 	}
-	if args != "--model\nprov/some model\n" {
+	if args != "--skill\n/etc/airlock/skills/concise\n--model\nprov/some model\n" {
 		t.Errorf("pi.args = %q", args)
 	}
 	if strings.Contains(manifest, "defaultModel") || strings.Contains(manifest, "prov/some") {
@@ -636,5 +636,33 @@ func TestLiteralEnvValue(t *testing.T) {
 	plan := testPlan(t, "[env]\nVAULT_DIR = { value = \"/mnt/vault\" }\n", proj, nil)
 	if !strings.Contains(strings.Join(plan.Spec.Env, "\n"), "VAULT_DIR=/mnt/vault") {
 		t.Errorf("literal env value not set: %v", plan.Spec.Env)
+	}
+}
+
+func TestConciseSkillShippedByDefaultAndSwitchable(t *testing.T) {
+	proj := newProject(t)
+	files := func(toml string) map[string]string {
+		out := map[string]string{}
+		for _, f := range testPlan(t, toml, proj, nil).Files {
+			out[f.Path] = string(f.Data)
+		}
+		return out
+	}
+	on := files("")
+	if !strings.Contains(on["/etc/airlock/skills/concise/SKILL.md"], "name: concise") {
+		t.Error("the concise skill is not shipped by default")
+	}
+	if !strings.Contains(on["/etc/airlock/pi.args"], "--skill\n/etc/airlock/skills/concise\n") {
+		t.Errorf("Pi is not told to load it:\n%s", on["/etc/airlock/pi.args"])
+	}
+	agents := on["/etc/airlock/AGENTS.md"]
+	if !strings.Contains(agents, "## Reply style") || !strings.Contains(agents, "Lead with the answer") || strings.Contains(agents, "name: concise") {
+		t.Errorf("the rules (without front matter) belong in AGENTS.md:\n%s", agents)
+	}
+
+	off := files("[agents]\nconcise = false\n")
+	if _, ok := off["/etc/airlock/skills/concise/SKILL.md"]; ok || strings.Contains(off["/etc/airlock/pi.args"], "concise") ||
+		strings.Contains(off["/etc/airlock/AGENTS.md"], "Reply style") {
+		t.Error("agents.concise = false must remove the skill, the Pi argument and the section")
 	}
 }

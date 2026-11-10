@@ -146,6 +146,12 @@ and its runtime must exist there: add `extras.mise = ["node@22", "python@3.12"]`
 as needed. A virtualenv or compiled `node_modules` built on macOS will not run
 in Linux; create them from inside the sandbox instead.
 
+Every agent also gets a built-in `concise` skill (`image/skills/concise/SKILL.md`):
+lead with the answer, no preamble or recap, numbered steps, one tangent at a time.
+Its rules are written into the generated `/AGENTS.md` and Pi loads the skill too.
+Turn it off with `[agents] concise = false`. It was inspired by
+[i-have-adhd](https://github.com/ayghri/i-have-adhd) (MIT), but is its own, shorter text.
+
 Agents are told about the sandbox, the network policy, git rules and every mount
 through a generated `/AGENTS.md`. Verify model ids with `pi --list-models` inside
 the sandbox rather than assuming them.

@@ -27,6 +27,7 @@ type Config struct {
 	Setup       []Setup        `toml:"setup"`
 	Team        Team           `toml:"team"`
 	Audit       Audit          `toml:"audit"`
+	Agents      Agents         `toml:"agents"`
 
 	// AgentsMDAppend is a host path whose content is appended to the
 	// generated global agent instructions.
@@ -109,6 +110,13 @@ type MCP struct {
 	EnvFromHost map[string]string `toml:"env_from_host"`
 }
 
+// Agents tunes what every agent in the sandbox is told.
+type Agents struct {
+	// Concise ships the built-in "concise" skill and puts its rules in the
+	// generated agent instructions, so replies stay short and actionable.
+	Concise bool `toml:"concise"`
+}
+
 // Setup is a command run inside the sandbox before the agent starts, to
 // prepare something airlock knows nothing about (a virtualenv, node_modules...).
 // It is done when its command is unchanged and the Creates path exists.
@@ -146,6 +154,7 @@ func Defaults() Config {
 		},
 		Network:     Network{Mode: "open-no-lan", Allow: []string{}, AllowCIDRs: []string{}},
 		Credentials: Credentials{Scope: "shared"},
+		Agents:      Agents{Concise: true},
 		Git:         Git{Mode: "local", Hosts: []string{"github.com"}},
 		Pi:          Pi{Version: "latest-pinned", Packages: []string{}, Settings: map[string]any{}},
 		Extras:      Extras{ClaudeCode: "auto", Apt: []string{}, Mise: []string{}},
