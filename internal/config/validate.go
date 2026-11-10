@@ -118,8 +118,18 @@ func (c *Config) Validate() error {
 		if !envNameRe.MatchString(name) {
 			add(fmt.Errorf("env: %q is not an environment variable name", name))
 		}
-		if !envNameRe.MatchString(e.FromHostEnv) {
+		if strings.HasPrefix(name, "AIRLOCK_") {
+			add(fmt.Errorf("env: %q is reserved for airlock's own settings", name))
+		}
+		switch {
+		case e.Value != "" && e.FromHostEnv != "":
+			add(fmt.Errorf("env.%s: set either value or from_host_env, not both", name))
+		case e.Value == "" && e.FromHostEnv == "":
+			add(fmt.Errorf("env.%s: set value or from_host_env", name))
+		case e.FromHostEnv != "" && !envNameRe.MatchString(e.FromHostEnv):
 			add(fmt.Errorf("env.%s.from_host_env: %q is not an environment variable name", name, e.FromHostEnv))
+		case strings.ContainsRune(e.Value, 0):
+			add(fmt.Errorf("env.%s.value contains a NUL byte", name))
 		}
 	}
 

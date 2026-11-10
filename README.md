@@ -99,6 +99,7 @@ default_model = "claude-bridge/claude-opus-5-5"
 
 [env]                                          # passed from your environment
 OPENCODE_API_KEY = { from_host_env = "OPENCODE_API_KEY" }
+VAULT_DIR = { value = "/mnt/vault" }           # a literal value, not a secret
 
 [[mount]]                                      # shared folders, at /mnt/<name>
 name = "notes"

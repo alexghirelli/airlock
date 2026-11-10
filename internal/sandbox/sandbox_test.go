@@ -630,3 +630,11 @@ func TestSetupStepsGoIntoTheManifest(t *testing.T) {
 	}
 	t.Fatal("no manifest")
 }
+
+func TestLiteralEnvValue(t *testing.T) {
+	proj := newProject(t)
+	plan := testPlan(t, "[env]\nVAULT_DIR = { value = \"/mnt/vault\" }\n", proj, nil)
+	if !strings.Contains(strings.Join(plan.Spec.Env, "\n"), "VAULT_DIR=/mnt/vault") {
+		t.Errorf("literal env value not set: %v", plan.Spec.Env)
+	}
+}

@@ -125,6 +125,10 @@ func BuildPlan(in PlanInput) (*Plan, error) {
 		secret["AIRLOCK_GIT_TOKEN"] = true
 	}
 	for _, name := range sortedKeys(c.Env) {
+		if lit := c.Env[name].Value; lit != "" {
+			env[name] = lit // not a secret: it is part of the config, so it counts for the policy hash
+			continue
+		}
 		src := c.Env[name].FromHostEnv
 		v, ok := hostEnv(src)
 		if !ok {

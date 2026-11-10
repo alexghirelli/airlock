@@ -77,9 +77,11 @@ type Image struct {
 	Dockerfile string `toml:"dockerfile"`
 }
 
-// Env declares an environment variable passed into the sandbox.
+// Env declares an environment variable set in the sandbox: either a literal
+// Value, or the content of a host variable (FromHostEnv), for secrets.
 type Env struct {
 	FromHostEnv string `toml:"from_host_env"`
+	Value       string `toml:"value"`
 }
 
 type Mount struct {

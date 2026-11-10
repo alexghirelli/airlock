@@ -44,6 +44,7 @@ mise = []                        # e.g. ["node@22"], preinstalled globally
 # container's configuration; see docs/security.md):
 # [env]
 # OPENCODE_API_KEY = { from_host_env = "OPENCODE_API_KEY" }
+# VAULT_DIR = { value = "/mnt/vault" }          # a literal, not a secret
 
 # Extra folders shared with the sandbox, mounted at /mnt/<name>. Zero or more.
 # [[mount]]
