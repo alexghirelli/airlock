@@ -10,17 +10,40 @@ directory, your local network, your git credentials or the Docker socket.
 > **Status: MVP.** The core is implemented and covered by automated tests (below).
 > Several features from the design are not built yet; see [What is not there yet](#what-is-not-there-yet).
 
-## Quick start
+## Install
 
-Requirements: Docker (Engine, Docker Desktop, OrbStack, Colima) and, to build from
-source, the Go version in `go.mod`.
+You need Docker (Engine, Docker Desktop, OrbStack or Colima) running.
+
+**Linux and macOS**, one line (checks the download against the release checksums):
 
 ```sh
-go build -o airlock ./cmd/airlock    # no install script or release binaries yet
-# once the repository is published:
-#   go install github.com/alexghirelli/airlock/cmd/airlock@latest
+curl -fsSL https://raw.githubusercontent.com/alexghirelli/airlock/main/install.sh | sh
+```
+
+It installs `airlock` into `~/.local/bin` (set `AIRLOCK_INSTALL_DIR` to change that,
+`AIRLOCK_VERSION=v0.1.0` to pin a release) and tells you if that folder is not in
+your `PATH`. To read the script before running it, open
+[install.sh](install.sh) first.
+
+**Manually**: download the archive for your system from the
+[Releases](https://github.com/alexghirelli/airlock/releases) page, check it with
+`sha256sum -c --ignore-missing SHA256SUMS`, and put `airlock` somewhere in your `PATH`.
+On **Windows**, use the `.zip`, preferably from inside WSL2 (see
+`airlock doctor` for the trade-offs).
+
+**With Go**: `go install github.com/alexghirelli/airlock/cmd/airlock@latest`.
+
+**From source**: `go build -o airlock ./cmd/airlock` in a clone of the repository.
+
+There is no published container image: the first `airlock` in any project builds the
+image on your machine (about two minutes, 1.3 GB, downloads Pi, Herdr and mise) and
+every later project reuses it.
+
+## Quick start
+
+```sh
 cd ~/projects/my-app
-airlock                              # first run builds the image (a few minutes)
+airlock                              # first run builds the image
 ```
 
 Inside, Herdr opens with Pi running in the project's workspace. Close the terminal
@@ -157,8 +180,8 @@ What it does **not** protect against:
 | `microvm` / `vm` backends | Rejected by the CLI. `gvisor` starts the container with `runsc` but has not been run through the test suite. |
 | `airlock login` | Runs Pi's and Claude Code's own login flows; checked up to the credential prompt only (no real login was made). `--reset` is untested. |
 | `[[mcp]]` | Written into Pi's MCP config; not tested against a real server. |
-| Release binaries, install script, CI, published image | Build from source for now. |
-| Windows and macOS | Written to be portable, tested only on Linux. |
+| A published container image | The image is built locally on first run. |
+| Windows and macOS | The release archives compile for them, but airlock has only been run on Linux. |
 
 ## Development
 
