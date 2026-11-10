@@ -20,7 +20,7 @@ import (
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
 
-	"airlock/internal/termio"
+	"github.com/alexghirelli/airlock/internal/termio"
 )
 
 // Docker is the container backend: a hardened OCI container driven through

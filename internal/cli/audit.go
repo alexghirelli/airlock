@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"airlock/internal/audit"
-	"airlock/internal/sandbox"
+	"github.com/alexghirelli/airlock/internal/audit"
+	"github.com/alexghirelli/airlock/internal/sandbox"
 )
 
 func auditPath(p *sandbox.Project) string {

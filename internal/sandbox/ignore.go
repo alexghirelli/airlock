@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"airlock/internal/backend"
-	"airlock/internal/ignore"
+	"github.com/alexghirelli/airlock/internal/backend"
+	"github.com/alexghirelli/airlock/internal/ignore"
 )
 
 // IgnoreFile lists, in gitignore syntax, the project files to hide from the

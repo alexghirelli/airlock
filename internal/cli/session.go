@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"os"
 
-	"airlock/internal/backend"
-	"airlock/internal/sandbox"
-	"airlock/internal/termio"
+	"github.com/alexghirelli/airlock/internal/backend"
+	"github.com/alexghirelli/airlock/internal/sandbox"
+	"github.com/alexghirelli/airlock/internal/termio"
 )
 
 func (e *env) cmdStart(ctx context.Context) (int, error) {

@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"airlock/internal/imagebuild"
-	"airlock/internal/sandbox"
+	"github.com/alexghirelli/airlock/internal/imagebuild"
+	"github.com/alexghirelli/airlock/internal/sandbox"
 )
 
 // cmdBuild builds the image locally; `update` rebuilds from scratch with the

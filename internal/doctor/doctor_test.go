@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"airlock/internal/ignore"
+	"github.com/alexghirelli/airlock/internal/ignore"
 )
 
 func touch(t *testing.T, root, rel string) {

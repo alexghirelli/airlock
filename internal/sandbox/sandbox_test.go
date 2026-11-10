@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"airlock/internal/backend"
-	"airlock/internal/config"
+	"github.com/alexghirelli/airlock/internal/backend"
+	"github.com/alexghirelli/airlock/internal/config"
 )
 
 func mkRepo(t *testing.T, dir string) string {

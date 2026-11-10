@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"airlock/internal/ignore"
+	"github.com/alexghirelli/airlock/internal/ignore"
 )
 
 // WatchedPatterns are the default gitignore-style patterns of files whose

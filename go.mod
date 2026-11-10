@@ -1,4 +1,4 @@
-module airlock
+module github.com/alexghirelli/airlock
 
 go 1.27.3
 

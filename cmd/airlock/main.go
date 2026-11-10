@@ -4,7 +4,7 @@ package main
 import (
 	"os"
 
-	"airlock/internal/cli"
+	"github.com/alexghirelli/airlock/internal/cli"
 )
 
 func main() {

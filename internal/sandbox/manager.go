@@ -13,10 +13,10 @@ import (
 	"strings"
 	"time"
 
-	"airlock/internal/backend"
-	"airlock/internal/config"
-	"airlock/internal/imagebuild"
-	"airlock/internal/version"
+	"github.com/alexghirelli/airlock/internal/backend"
+	"github.com/alexghirelli/airlock/internal/config"
+	"github.com/alexghirelli/airlock/internal/imagebuild"
+	"github.com/alexghirelli/airlock/internal/version"
 )
 
 // ReadyFile appears inside the sandbox once its init script has finished.

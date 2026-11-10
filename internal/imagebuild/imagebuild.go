@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"airlock"
-	"airlock/internal/config"
-	"airlock/internal/version"
+	"github.com/alexghirelli/airlock"
+	"github.com/alexghirelli/airlock/internal/config"
+	"github.com/alexghirelli/airlock/internal/version"
 )
 
 // BaseRef returns the tag of the base image for the given configuration. It

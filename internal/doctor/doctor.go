@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"airlock/internal/ignore"
+	"github.com/alexghirelli/airlock/internal/ignore"
 )
 
 // Status of a check.

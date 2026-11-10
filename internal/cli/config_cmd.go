@@ -9,7 +9,7 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 
-	"airlock/internal/config"
+	"github.com/alexghirelli/airlock/internal/config"
 )
 
 func (e *env) userConfigPath() string {

@@ -11,12 +11,12 @@ import (
 	"runtime"
 	"strings"
 
-	"airlock/internal/backend"
-	"airlock/internal/doctor"
-	"airlock/internal/ignore"
-	"airlock/internal/imagebuild"
-	"airlock/internal/sandbox"
-	"airlock/internal/version"
+	"github.com/alexghirelli/airlock/internal/backend"
+	"github.com/alexghirelli/airlock/internal/doctor"
+	"github.com/alexghirelli/airlock/internal/ignore"
+	"github.com/alexghirelli/airlock/internal/imagebuild"
+	"github.com/alexghirelli/airlock/internal/sandbox"
+	"github.com/alexghirelli/airlock/internal/version"
 )
 
 func (e *env) cmdDoctor(ctx context.Context) (int, error) {

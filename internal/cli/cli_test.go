@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"airlock/internal/config"
+	"github.com/alexghirelli/airlock/internal/config"
 )
 
 func TestParseArgs(t *testing.T) {

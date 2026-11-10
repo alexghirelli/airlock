@@ -8,7 +8,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"airlock/internal/backend"
+	"github.com/alexghirelli/airlock/internal/backend"
 )
 
 type lsEntry struct {

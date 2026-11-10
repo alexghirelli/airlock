@@ -11,11 +11,11 @@ import (
 	"strings"
 	"syscall"
 
-	"airlock/internal/backend"
-	"airlock/internal/config"
-	"airlock/internal/sandbox"
-	"airlock/internal/termio"
-	"airlock/internal/version"
+	"github.com/alexghirelli/airlock/internal/backend"
+	"github.com/alexghirelli/airlock/internal/config"
+	"github.com/alexghirelli/airlock/internal/sandbox"
+	"github.com/alexghirelli/airlock/internal/termio"
+	"github.com/alexghirelli/airlock/internal/version"
 )
 
 const usage = `airlock — a sandbox for AI coding agents

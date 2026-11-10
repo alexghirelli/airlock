@@ -15,10 +15,10 @@ import (
 	"strings"
 	"text/template"
 
-	"airlock"
-	"airlock/internal/backend"
-	"airlock/internal/config"
-	"airlock/internal/version"
+	"github.com/alexghirelli/airlock"
+	"github.com/alexghirelli/airlock/internal/backend"
+	"github.com/alexghirelli/airlock/internal/config"
+	"github.com/alexghirelli/airlock/internal/version"
 )
 
 // Names shared by all sandboxes on a machine.
