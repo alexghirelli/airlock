@@ -124,6 +124,9 @@ type Setup struct {
 	Name    string `toml:"name" json:"name"`
 	Run     string `toml:"run" json:"run"`
 	Creates string `toml:"creates" json:"creates"`
+	// Watch lists paths whose content decides whether the step runs again
+	// (the step also reruns when Run changes or Creates is missing).
+	Watch []string `toml:"watch" json:"watch"`
 }
 
 type Team struct {

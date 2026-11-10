@@ -102,6 +102,7 @@ func TestValidation(t *testing.T) {
 		"env both":        "[env]\nX = { value = \"a\", from_host_env = \"B\" }\n",
 		"env neither":     "[env]\nX = {}\n",
 		"env reserved":    "[env]\nAIRLOCK_NET_MODE = { value = \"open\" }\n",
+		"setup bad watch": "[[setup]]\nname=\"x\"\nrun=\"true\"\nwatch=[\"relative/path\"]\n",
 		"setup no run":    "[[setup]]\nname=\"x\"\n",
 		"setup bad name":  "[[setup]]\nname=\"../x\"\nrun=\"true\"\n",
 		"setup dup":       "[[setup]]\nname=\"x\"\nrun=\"true\"\n[[setup]]\nname=\"x\"\nrun=\"true\"\n",

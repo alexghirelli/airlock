@@ -230,6 +230,11 @@ func (c *Config) Validate() error {
 		if strings.ContainsRune(s.Run, 0) || strings.ContainsAny(s.Creates, "\x00\n\r") {
 			add(fmt.Errorf("%s contains control characters", where))
 		}
+		for _, w := range s.Watch {
+			if strings.ContainsAny(w, "\x00\n\r") || !(strings.HasPrefix(w, "/") || w == "~" || strings.HasPrefix(w, "~/")) {
+				add(fmt.Errorf("%s.watch: %q must be an absolute path inside the sandbox (or start with ~/)", where, w))
+			}
+		}
 	}
 
 	for role, lvl := range c.Team.Thinking {

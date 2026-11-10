@@ -4,6 +4,8 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -340,6 +342,9 @@ func (m *Manager) Up(ctx context.Context) (created bool, err error) {
 		}
 		created = true
 	} else if info.Running {
+		if m.configDrift(ctx, name, plan.Files) {
+			m.logf("airlock: the configuration changed since %s started; run `airlock restart` to apply it (sessions in it will end)", name)
+		}
 		return false, m.waitReady(ctx, name)
 	} else {
 		m.logf("airlock: starting %s", name)
@@ -413,6 +418,36 @@ func (m *Manager) waitReady(ctx context.Context, name string) error {
 		case <-time.After(300 * time.Millisecond):
 		}
 	}
+}
+
+// configDrift reports whether the files airlock would copy into the sandbox at
+// start differ from the ones in the running container, which means the config
+// (or airlock itself) changed after the sandbox started.
+func (m *Manager) configDrift(ctx context.Context, name string, files []backend.File) bool {
+	if len(files) == 0 {
+		return false
+	}
+	cmd := []string{"sha256sum", "--"}
+	for _, f := range files {
+		cmd = append(cmd, f.Path)
+	}
+	var out bytes.Buffer
+	if _, err := m.B.Exec(ctx, name, backend.ExecOpts{Cmd: cmd, Stdout: &out}); err != nil {
+		return false // cannot tell; stay quiet
+	}
+	have := map[string]string{}
+	for _, line := range strings.Split(out.String(), "\n") {
+		if sum, p, ok := strings.Cut(line, "  "); ok {
+			have[p] = sum
+		}
+	}
+	for _, f := range files {
+		want := sha256.Sum256(f.Data)
+		if have[f.Path] != hex.EncodeToString(want[:]) {
+			return true
+		}
+	}
+	return false
 }
 
 // showInitWarnings prints what the sandbox's init step could not do (a failed

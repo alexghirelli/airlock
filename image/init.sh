@@ -97,7 +97,14 @@ while read -r step; do
   [[ -n "$step" ]] || continue
   name="$(jq -r .name <<<"$step")"; run="$(jq -r .run <<<"$step")"
   creates="$(jq -r '.creates // empty' <<<"$step")"; creates="${creates/#\~/$HOME}"
-  sum="$(printf '%s' "$run" | sha256sum | cut -d' ' -f1)"
+  # Paths to watch: their file list with sizes and mtimes goes into the hash.
+  watched=""
+  while IFS= read -r wp; do
+    [[ -n "$wp" ]] || continue
+    wp="${wp/#\~/$HOME}"
+    watched+="$(find "$wp" \( -name .git -o -name __pycache__ -o -name node_modules -o -name '*.log' \) -prune -o -type f -printf '%P %s %T@\n' 2>/dev/null | sort | sha256sum)"
+  done < <(jq -r '.watch[]? // empty' <<<"$step")
+  sum="$(printf '%s%s' "$run" "$watched" | sha256sum | cut -d' ' -f1)"
   if [[ "$(cat "$setup_state/$name" 2>/dev/null || true)" == "$sum" && ( -z "$creates" || -e "$creates" ) ]]; then
     continue
   fi

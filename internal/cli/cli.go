@@ -26,6 +26,7 @@ Usage:
   airlock shell [path]         open a shell in the sandbox
   airlock exec [path] -- cmd   run a command in the sandbox
   airlock stop [path]          stop the sandbox (installed tools are kept)
+  airlock restart [path]       stop and start again, to apply a changed config
   airlock rm [path]            delete the sandbox
   airlock ls                   list sandboxes
   airlock login [--reset]      log in to the configured providers
@@ -34,6 +35,7 @@ Usage:
   airlock doctor               check the runtime, mounts, firewall and credentials
   airlock audit [path]         report changes to host-executable files (--accept to acknowledge)
   airlock config [init|show|path|edit]
+  airlock mcp import <file>    turn an "mcpServers" JSON file into [[mcp]] entries
   airlock version
 
 The path defaults to the git root of the current directory.
@@ -53,7 +55,7 @@ Flags:
 
 // commands maps a first word to a command; anything else is a project path.
 var commands = map[string]bool{
-	"shell": true, "exec": true, "stop": true, "rm": true, "ls": true, "login": true,
+	"shell": true, "exec": true, "stop": true, "restart": true, "mcp": true, "rm": true, "ls": true, "login": true,
 	"build": true, "update": true, "doctor": true, "audit": true, "config": true,
 	"version": true, "help": true,
 }
@@ -148,7 +150,7 @@ func parseArgs(argv []string) (*args, error) {
 		positional = append(positional, arg)
 	}
 	switch a.command {
-	case "config", "login":
+	case "config", "login", "mcp":
 		a.rest = append(positional, a.rest...)
 	default:
 		if len(positional) > 1 {
@@ -227,6 +229,10 @@ func (e *env) run(ctx context.Context) (int, error) {
 		return e.cmdExec(ctx)
 	case "stop":
 		return e.cmdStop(ctx)
+	case "restart":
+		return e.cmdRestart(ctx)
+	case "mcp":
+		return e.cmdMCP()
 	case "rm":
 		return e.cmdRm(ctx)
 	case "ls":

@@ -132,6 +132,7 @@ python -m venv ~/.local/share/mise/venvs/gerrit &&
 ~/.local/share/mise/venvs/gerrit/bin/pip install -r /mnt/tools/gerrit/requirements.txt
 """
 creates = "~/.local/share/mise/venvs/gerrit/bin/python"
+watch = ["/mnt/tools/gerrit"]                  # rerun when files there change
 ```
 
 `[[setup]]` runs a shell command at start, before the agent, for anything airlock
@@ -140,6 +141,18 @@ is skipped while its command is unchanged and the `creates` path exists; a faili
 step is reported by `airlock` and retried at the next start, without stopping the
 sandbox. Only your user config may define steps: a project's `.airlock.toml` cannot.
 Put what they build under `~/.local/share/mise` to keep it across recreations.
+With `watch`, a step also reruns when the files under those paths change (size or
+modification time; `.git`, `__pycache__`, `node_modules` and `*.log` are ignored),
+so a copy of a tool from a mount stays current.
+
+The configuration is read when the sandbox starts. If you change it while a sandbox
+is running, `airlock` says so; `airlock restart` stops and starts it again to apply
+the change (sessions inside it end).
+
+Already have `mcpServers` JSON from another tool? `airlock mcp import file.json`
+prints the matching `[[mcp]]` entries. It never copies values that look like secrets
+(it points to host variables instead) and warns about paths on your computer,
+virtualenvs and runtimes the sandbox does not have yet.
 
 A local MCP server runs inside the Linux sandbox, so its code must be mounted
 and its runtime must exist there: add `extras.mise = ["node@22", "python@3.12"]`

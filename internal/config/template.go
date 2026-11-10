@@ -89,6 +89,7 @@ mise = []                        # e.g. ["node@22"], preinstalled globally
 # ~/.local/share/mise/venvs/gerrit/bin/pip install -r /mnt/tools/gerrit/requirements.txt
 # """
 # creates = "~/.local/share/mise/venvs/gerrit/bin/python"
+# watch = ["/mnt/tools/gerrit"]   # also rerun when files there change (ignores .git, caches, *.log)
 
 # agents_md_append = "~/airlock-agents-extra.md"   # appended to the generated global agent instructions
 
