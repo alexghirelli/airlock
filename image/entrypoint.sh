@@ -81,13 +81,22 @@ firewall_common() {
 # the default bridge) put them in "nameserver" lines. Allow port 53 to exactly
 # those servers and nothing else.
 dns_servers() {
-  awk '$1 == "nameserver" { print $2 }' /etc/resolv.conf
-  sed -n 's/^# *ExtServers: *\[\(.*\)\].*/\1/p' /etc/resolv.conf | tr -s ' ,' '\n\n'
+  local conf="${1:-/etc/resolv.conf}"
+  awk '$1 == "nameserver" { print $2 }' "$conf"
+  # The header lists the upstream servers in forms like "[172.17.0.1 8.8.8.8]" or,
+  # on Docker Desktop, "[host(192.168.65.7)]". Pull the addresses out and ignore
+  # the wrapping; anything that is not an address is dropped, never passed on.
+  sed -n 's/^# *ExtServers: *\[\(.*\)\].*/\1/p' "$conf" |
+    grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}|[0-9a-fA-F]*:[0-9a-fA-F:]+' || true
 }
+
+# Accept only plain IPv4/IPv6 literals as firewall arguments.
+is_ip() { [[ "$1" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ || "$1" =~ ^[0-9a-fA-F]*:[0-9a-fA-F:]+$ ]]; }
 
 allow_dns() {
   local ns
   while read -r ns; do
+    is_ip "$ns" || continue
     case "$ns" in
       127.*|::1|'') continue ;;
       *:*) if have_ip6; then
@@ -169,26 +178,33 @@ install_firewall() {
 }
 
 # ------------------------------------------------------------------------ main
-# The firewall runs in a child process: inside `if !` the shell would ignore
-# `set -e`, and a rule that failed to install would go unnoticed.
-if [[ "${1:-}" == __firewall ]]; then
-  install_firewall
-  exit 0
-fi
+main() {
+  # The firewall runs in a child process: inside `if !` the shell would ignore
+  # `set -e`, and a rule that failed to install would go unnoticed.
+  if [[ "${1:-}" == __firewall ]]; then
+    install_firewall
+    exit 0
+  fi
 
-mkdir -p /run/airlock
-remap_user
-# Global agent instructions: Pi loads context files from every parent directory
-# of its working directory, so one at / reaches every project path and, unlike
-# a file in the (shared) credentials volume, belongs to this sandbox alone.
-install -m 0644 -o root -g root /etc/airlock/AGENTS.md /AGENTS.md
-if ! "$0" __firewall; then
-  die "cannot set up the firewall (is NET_ADMIN granted?). Refusing to start."
-fi
-chown agent: /run/airlock
-echo "${AIRLOCK_NET_MODE:-open-no-lan}" >/run/airlock/net-mode
+  mkdir -p /run/airlock
+  remap_user
+  # Global agent instructions: Pi loads context files from every parent directory
+  # of its working directory, so one at / reaches every project path and, unlike
+  # a file in the (shared) credentials volume, belongs to this sandbox alone.
+  install -m 0644 -o root -g root /etc/airlock/AGENTS.md /AGENTS.md
+  if ! "$0" __firewall; then
+    die "cannot set up the firewall (is NET_ADMIN granted?). Refusing to start."
+  fi
+  chown agent: /run/airlock
+  echo "${AIRLOCK_NET_MODE:-open-no-lan}" >/run/airlock/net-mode
 
-gid="$(id -g agent)"
-exec setpriv --reuid agent --regid "$gid" --init-groups \
-  --bounding-set -net_admin,-net_raw \
-  /usr/local/bin/airlock-init "$@"
+  gid="$(id -g agent)"
+  exec setpriv --reuid agent --regid "$gid" --init-groups \
+    --bounding-set -net_admin,-net_raw \
+    /usr/local/bin/airlock-init "$@"
+}
+
+# Sourcing the file (tests) only defines the functions.
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi
