@@ -613,3 +613,20 @@ func TestMCPCommandServer(t *testing.T) {
 		t.Error("secret not forwarded through the container environment")
 	}
 }
+
+func TestSetupStepsGoIntoTheManifest(t *testing.T) {
+	proj := newProject(t)
+	toml := "[[setup]]\nname=\"venv\"\nrun=\"python -m venv ~/v\"\ncreates=\"~/v/bin/python\"\n"
+	plan := testPlan(t, toml, proj, nil)
+	for _, f := range plan.Files {
+		if f.Path == "/etc/airlock/manifest.json" {
+			for _, want := range []string{`"name": "venv"`, `python -m venv ~/v`, `"creates": "~/v/bin/python"`} {
+				if !strings.Contains(strings.ReplaceAll(string(f.Data), `":"`, `": "`), want) {
+					t.Errorf("manifest lacks %s:\n%s", want, f.Data)
+				}
+			}
+			return
+		}
+	}
+	t.Fatal("no manifest")
+}

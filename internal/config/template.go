@@ -77,6 +77,18 @@ mise = []                        # e.g. ["node@22"], preinstalled globally
 # env = { TRACKER_USER = "alice" }
 # env_from_host = { TRACKER_TOKEN = "TRACKER_TOKEN" }
 
+# Preparation steps run inside the sandbox at start, before the agent: build a
+# virtualenv, install node_modules, anything airlock knows nothing about. A step
+# is skipped while its command is unchanged and the "creates" path exists. Only
+# this file may define them; a project's .airlock.toml cannot.
+# [[setup]]
+# name = "gerrit-venv"
+# run = """
+# python -m venv ~/.local/share/mise/venvs/gerrit &&
+# ~/.local/share/mise/venvs/gerrit/bin/pip install -r /mnt/tools/gerrit/requirements.txt
+# """
+# creates = "~/.local/share/mise/venvs/gerrit/bin/python"
+
 # agents_md_append = "~/airlock-agents-extra.md"   # appended to the generated global agent instructions
 
 [team]

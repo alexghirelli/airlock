@@ -8,7 +8,11 @@ set -euo pipefail
 export HOME=/home/agent USER=agent
 MANIFEST=/etc/airlock/manifest.json
 say()  { echo "airlock: $*" >&2; }
-warn() { echo "airlock: warning: $*" >&2; }
+# Warnings are also kept in /run/airlock/warnings, so the airlock CLI can show
+# them after start instead of leaving them in the container log.
+WARN_FILE=/run/airlock/warnings
+: >"$WARN_FILE" 2>/dev/null || true
+warn() { echo "airlock: warning: $*" | tee -a "$WARN_FILE" >&2 || true; }
 m()    { jq -r "$1" "$MANIFEST"; }
 
 [[ -r "$MANIFEST" ]] || { say "missing $MANIFEST"; exit 1; }
@@ -83,6 +87,28 @@ while read -r tool; do
   [[ -n "$tool" ]] || continue
   mise use -g "$tool" >&2 || warn "could not install $tool with mise"
 done < <(m '.mise[]?')
+
+# --- setup steps from the user config. A step is done when the hash of its
+# command is recorded and its `creates` path exists; a failed step is retried
+# at the next start and does not stop the sandbox.
+setup_state="$HOME/.local/share/mise/.airlock-setup"
+mkdir -p "$setup_state"
+while read -r step; do
+  [[ -n "$step" ]] || continue
+  name="$(jq -r .name <<<"$step")"; run="$(jq -r .run <<<"$step")"
+  creates="$(jq -r '.creates // empty' <<<"$step")"; creates="${creates/#\~/$HOME}"
+  sum="$(printf '%s' "$run" | sha256sum | cut -d' ' -f1)"
+  if [[ "$(cat "$setup_state/$name" 2>/dev/null || true)" == "$sum" && ( -z "$creates" || -e "$creates" ) ]]; then
+    continue
+  fi
+  say "setup: $name"
+  if (cd "$HOME" && bash -c "$run") </dev/null >&2; then
+    echo "$sum" >"$setup_state/$name"
+  else
+    rm -f "$setup_state/$name"
+    warn "setup step '$name' failed (it runs again at the next start)"
+  fi
+done < <(m '.setup[]? | @json')
 
 touch /run/airlock/ready
 exec "$@"

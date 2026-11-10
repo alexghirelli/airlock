@@ -396,6 +396,7 @@ func (m *Manager) waitReady(ctx context.Context, name string) error {
 		}
 		code, err := m.B.Exec(ctx, name, backend.ExecOpts{Cmd: []string{"test", "-f", ReadyFile}})
 		if err == nil && code == 0 {
+			m.showInitWarnings(ctx, name)
 			return nil
 		}
 		if !noticed && time.Since(start) > 2*time.Second {
@@ -410,6 +411,21 @@ func (m *Manager) waitReady(ctx context.Context, name string) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-time.After(300 * time.Millisecond):
+		}
+	}
+}
+
+// showInitWarnings prints what the sandbox's init step could not do (a failed
+// setup step, a package that did not install), which would otherwise only show
+// up later as a missing tool.
+func (m *Manager) showInitWarnings(ctx context.Context, name string) {
+	var out bytes.Buffer
+	if code, err := m.B.Exec(ctx, name, backend.ExecOpts{Cmd: []string{"cat", "/run/airlock/warnings"}, Stdout: &out}); err != nil || code != 0 {
+		return
+	}
+	for _, line := range strings.Split(strings.TrimSpace(out.String()), "\n") {
+		if line != "" {
+			m.logf("%s", line)
 		}
 	}
 }

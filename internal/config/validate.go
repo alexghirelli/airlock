@@ -203,6 +203,25 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	seen = map[string]bool{}
+	for i, s := range c.Setup {
+		where := fmt.Sprintf("setup[%d]", i)
+		if !nameRe.MatchString(s.Name) {
+			add(fmt.Errorf("%s.name: %q must match %s", where, s.Name, nameRe))
+			continue
+		}
+		if seen[s.Name] {
+			add(fmt.Errorf("%s.name: duplicate setup name %q", where, s.Name))
+		}
+		seen[s.Name] = true
+		if strings.TrimSpace(s.Run) == "" {
+			add(fmt.Errorf("%s.run is required", where))
+		}
+		if strings.ContainsRune(s.Run, 0) || strings.ContainsAny(s.Creates, "\x00\n\r") {
+			add(fmt.Errorf("%s contains control characters", where))
+		}
+	}
+
 	for role, lvl := range c.Team.Thinking {
 		add(oneOf("team.thinking."+role, lvl, Thinkings))
 	}

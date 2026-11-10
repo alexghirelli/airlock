@@ -227,6 +227,7 @@ func BuildPlan(in PlanInput) (*Plan, error) {
 	man.Git.Email = host.gitConfig(p.Root, "user.email")
 	man.Pi.Packages = c.Pi.Packages
 	man.Pi.MCP = mcp
+	man.Setup = c.Setup
 	man.Pi.Settings = piSettings(c)
 	man.ClaudeCode = c.NeedsClaudeCode()
 	manJSON, err := json.MarshalIndent(man, "", "  ")
@@ -350,8 +351,9 @@ type manifest struct {
 		Packages []string       `json:"packages"`
 		MCP      map[string]any `json:"mcp"`
 	} `json:"pi"`
-	Mise       []string `json:"mise"`
-	ClaudeCode bool     `json:"claude_code"`
+	Mise       []string       `json:"mise"`
+	Setup      []config.Setup `json:"setup"`
+	ClaudeCode bool           `json:"claude_code"`
 }
 
 // piSettings builds the overlay merged into the shared Pi settings.json: the

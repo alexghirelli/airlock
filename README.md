@@ -123,7 +123,22 @@ command = "node"
 args = ["/mnt/tools/mcp-tracker/src/index.js"] # code comes in through a mount
 env = { TRACKER_USER = "alice" }
 env_from_host = { TRACKER_TOKEN = "TRACKER_TOKEN" }   # secrets stay out of the file
+
+[[setup]]                                      # preparation run inside the sandbox
+name = "gerrit-venv"
+run = """
+python -m venv ~/.local/share/mise/venvs/gerrit &&
+~/.local/share/mise/venvs/gerrit/bin/pip install -r /mnt/tools/gerrit/requirements.txt
+"""
+creates = "~/.local/share/mise/venvs/gerrit/bin/python"
 ```
+
+`[[setup]]` runs a shell command at start, before the agent, for anything airlock
+knows nothing about (a virtualenv, `npm ci`, a copy into a writable folder). A step
+is skipped while its command is unchanged and the `creates` path exists; a failing
+step is reported by `airlock` and retried at the next start, without stopping the
+sandbox. Only your user config may define steps: a project's `.airlock.toml` cannot.
+Put what they build under `~/.local/share/mise` to keep it across recreations.
 
 A local MCP server runs inside the Linux sandbox, so its code must be mounted
 and its runtime must exist there: add `extras.mise = ["node@22", "python@3.12"]`

