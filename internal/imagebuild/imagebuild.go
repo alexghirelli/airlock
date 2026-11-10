@@ -22,7 +22,7 @@ import (
 // changes whenever a build input (extras, Pi version, Claude Code) changes, so
 // editing the config rebuilds the image instead of silently reusing a stale one.
 func BaseRef(c *config.Config) string {
-	return fmt.Sprintf("airlock:%s-%s", version.Version, shortHash(baseInputs(c)))
+	return fmt.Sprintf("airlock:%s-%s", version.Tag(), shortHash(baseInputs(c)))
 }
 
 func baseInputs(c *config.Config) string {

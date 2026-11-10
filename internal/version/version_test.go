@@ -14,3 +14,18 @@ func TestFromModuleVersion(t *testing.T) {
 		}
 	}
 }
+
+func TestTagIsAValidImageTag(t *testing.T) {
+	old := Version
+	defer func() { Version = old }()
+	for in, want := range map[string]string{
+		"0.1.0": "0.1.0",
+		"0.1.1-0.20261110164954-7c623758b445+dirty": "0.1.1-0.20261110164954-7c623758b445-dirty",
+		"1.0.0+build/5": "1.0.0-build-5",
+	} {
+		Version = in
+		if got := Tag(); got != want {
+			t.Errorf("Tag() for %q = %q, want %q", in, got, want)
+		}
+	}
+}

@@ -2,6 +2,7 @@
 package version
 
 import (
+	"regexp"
 	"runtime/debug"
 	"strings"
 )
@@ -35,3 +36,10 @@ func fromModuleVersion(v string) (string, bool) {
 	}
 	return strings.TrimPrefix(v, "v"), true
 }
+
+var badTagChars = regexp.MustCompile(`[^A-Za-z0-9_.-]`)
+
+// Tag is Version made safe for use in a container image tag, which allows only
+// letters, digits, underscore, dot and dash (a build from a dirty checkout has a
+// "+dirty" suffix, for example).
+func Tag() string { return badTagChars.ReplaceAllString(Version, "-") }

@@ -125,7 +125,7 @@ func (m *Manager) EnsureImage(ctx context.Context, mode BuildMode) (plan imagePl
 // (after an upgrade or a config change) does not pile up gigabytes. Images that
 // a sandbox still uses are left alone by the engine.
 func (m *Manager) pruneOldImages(ctx context.Context, keep imagePlan) {
-	current := map[string]bool{keep.Base: true, keep.Run: true, "airlock:" + version.Version: true}
+	current := map[string]bool{keep.Base: true, keep.Run: true, "airlock:" + version.Tag(): true}
 	for _, repo := range []string{"airlock", "airlock-project"} {
 		tags, err := m.B.ImageTags(ctx, repo)
 		if err != nil {
@@ -162,7 +162,7 @@ func (m *Manager) ensureBase(ctx context.Context, ref string, mode BuildMode) er
 	}
 	c := &m.Config.Config
 	return m.build(ctx, backend.BuildRequest{
-		Context: bctx, Tags: []string{ref, "airlock:" + version.Version}, Dockerfile: "Dockerfile",
+		Context: bctx, Tags: []string{ref, "airlock:" + version.Tag()}, Dockerfile: "Dockerfile",
 		Args: imagebuild.BaseArgs(c), NoCache: mode == BuildFresh, Pull: mode == BuildFresh,
 	})
 }
