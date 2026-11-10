@@ -84,6 +84,7 @@ func BaseContext() (io.Reader, error) {
 		{"image/init.sh", "init.sh"},
 		{"image/session.sh", "session.sh"},
 		{"image/herdr-up.sh", "herdr-up.sh"},
+		{"image/profile-path.sh", "profile-path.sh"},
 		{"image/pi-wrapper.sh", "pi-wrapper.sh"},
 		{"image/npm-wrapper.sh", "npm-wrapper.sh"},
 	} {

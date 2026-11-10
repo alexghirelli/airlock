@@ -80,6 +80,7 @@ COPY entrypoint.sh /usr/local/sbin/airlock-entrypoint
 COPY init.sh /usr/local/bin/airlock-init
 COPY session.sh /usr/local/bin/airlock-session
 COPY herdr-up.sh /usr/local/bin/airlock-herdr-up
+COPY profile-path.sh /etc/profile.d/10-airlock-path.sh
 RUN chmod 0755 /usr/local/sbin/airlock-entrypoint /usr/local/bin/airlock-init /usr/local/bin/airlock-session /usr/local/bin/airlock-herdr-up
 
 # Earlier root-run steps may have created files under the agent's home (mise
