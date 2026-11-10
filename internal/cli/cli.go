@@ -30,6 +30,7 @@ Usage:
   airlock ls                   list sandboxes
   airlock login [--reset]      log in to the configured providers
   airlock build | update       build the image / rebuild with the latest pinned versions
+                               (build --if-missing skips an image that already exists)
   airlock doctor               check the runtime, mounts, firewall and credentials
   airlock audit [path]         report changes to host-executable files (--accept to acknowledge)
   airlock config [init|show|path|edit]
@@ -59,23 +60,24 @@ var commands = map[string]bool{
 
 // args is a parsed command line.
 type args struct {
-	command  string   // "start" if none given
-	path     string   // optional project path
-	rest     []string // arguments after `--`, or sub-arguments (config init)
-	json     bool
-	verbose  bool
-	team     bool
-	teamSet  bool
-	ui       string
-	network  string
-	ephemer  bool
-	recreate bool
-	remote   string
-	cfgFile  string
-	reset    bool
-	force    bool
-	accept   bool
-	help     bool
+	command   string   // "start" if none given
+	path      string   // optional project path
+	rest      []string // arguments after `--`, or sub-arguments (config init)
+	json      bool
+	verbose   bool
+	team      bool
+	teamSet   bool
+	ui        string
+	network   string
+	ephemer   bool
+	recreate  bool
+	remote    string
+	cfgFile   string
+	reset     bool
+	force     bool
+	accept    bool
+	ifMissing bool
+	help      bool
 }
 
 func parseArgs(argv []string) (*args, error) {
@@ -118,6 +120,8 @@ func parseArgs(argv []string) (*args, error) {
 				a.force = true
 			case "--accept":
 				a.accept = true
+			case "--if-missing":
+				a.ifMissing = true
 			case "--help", "-h":
 				a.help = true
 			case "--ui":

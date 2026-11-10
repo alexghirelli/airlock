@@ -27,15 +27,18 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	airlockBin = filepath.Join(dir, "airlock")
-	build := exec.Command("go", "build", "-o", airlockBin, "../cmd/airlock")
+	// A fixed version keeps the image tag stable across commits, so CI can cache
+	// the image (the tag also hashes the image sources).
+	build := exec.Command("go", "build", "-ldflags", "-X github.com/alexghirelli/airlock/internal/version.Version=0.0.0-test",
+		"-o", airlockBin, "../cmd/airlock")
 	build.Stdout, build.Stderr = os.Stdout, os.Stderr
 	if err := build.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "build airlock:", err)
 		os.Exit(1)
 	}
 	// Build the image once; every test then starts from it.
-	img := exec.Command(airlockBin, "build")
-	img.Env = append(os.Environ(), "AIRLOCK_CONFIG="+filepath.Join(dir, "none.toml"))
+	img := exec.Command(airlockBin, "build", "--if-missing")
+	img.Env = append(os.Environ(), "AIRLOCK_CONFIG="+filepath.Join(dir, "none.toml"), "AIRLOCK_PRUNE_IMAGES=0")
 	if out, err := img.CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, "airlock build failed: %v\n%s", err, out)
 		os.Exit(1)
@@ -90,7 +93,7 @@ func (p *project) git(args ...string) string {
 }
 
 func (p *project) env(extra ...string) []string {
-	env := append(os.Environ(), "AIRLOCK_CONFIG="+p.cfg, "GIT_CONFIG_GLOBAL="+filepath.Join(filepath.Dir(p.cfg), "gitconfig"))
+	env := append(os.Environ(), "AIRLOCK_PRUNE_IMAGES=0", "AIRLOCK_CONFIG="+p.cfg, "GIT_CONFIG_GLOBAL="+filepath.Join(filepath.Dir(p.cfg), "gitconfig"))
 	// A global git identity for the sandbox to copy.
 	_ = os.WriteFile(filepath.Join(filepath.Dir(p.cfg), "gitconfig"), []byte("[user]\n\tname = Test User\n\temail = test@example.org\n"), 0o644)
 	env = append(env, p.extra...)

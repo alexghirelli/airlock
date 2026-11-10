@@ -3,6 +3,7 @@
 package tests
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -12,6 +13,11 @@ import (
 // the image include it, the default model reaches Pi, and provider keys reach
 // the sandbox from the host environment.
 func TestPackagesDefaultModelAndEnv(t *testing.T) {
+	// Builds a second image variant (Claude Code is a 340 MB download) and installs
+	// an npm package: minutes of network time. Run it with AIRLOCK_IT_SLOW=1.
+	if os.Getenv("AIRLOCK_IT_SLOW") == "" {
+		t.Skip("slow: set AIRLOCK_IT_SLOW=1 to run")
+	}
 	p := newProject(t, "pkgs", `
 [pi]
 packages = ["npm:pi-claude-bridge@0.11.0"]

@@ -32,8 +32,11 @@ func (e *env) cmdBuild(ctx context.Context) (int, error) {
 	}
 	m := &sandbox.Manager{B: b, Config: l.res, Project: l.project, Host: sandbox.DefaultHost(), Log: e.stderr, Verbose: e.a.verbose}
 	mode := sandbox.BuildForce
-	if e.a.command == "update" {
+	switch {
+	case e.a.command == "update":
 		mode = sandbox.BuildFresh
+	case e.a.ifMissing:
+		mode = sandbox.BuildIfMissing
 	}
 	if l.project == nil {
 		// No project: build only the base image.

@@ -125,6 +125,9 @@ func (m *Manager) EnsureImage(ctx context.Context, mode BuildMode) (plan imagePl
 // (after an upgrade or a config change) does not pile up gigabytes. Images that
 // a sandbox still uses are left alone by the engine.
 func (m *Manager) pruneOldImages(ctx context.Context, keep imagePlan) {
+	if os.Getenv("AIRLOCK_PRUNE_IMAGES") == "0" {
+		return // the test suite builds several image variants and keeps them all
+	}
 	current := map[string]bool{keep.Base: true, keep.Run: true, "airlock:" + version.Tag(): true}
 	for _, repo := range []string{"airlock", "airlock-project"} {
 		tags, err := m.B.ImageTags(ctx, repo)
