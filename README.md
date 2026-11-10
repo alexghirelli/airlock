@@ -17,6 +17,8 @@ source, the Go version in `go.mod`.
 
 ```sh
 go build -o airlock ./cmd/airlock    # no install script or release binaries yet
+# once the repository is published:
+#   go install github.com/alexghirelli/airlock/cmd/airlock@latest
 cd ~/projects/my-app
 airlock                              # first run builds the image (a few minutes)
 ```
@@ -178,6 +180,6 @@ Code). airlock removes superseded `airlock:*` image tags after each build.
 
 Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
-The image downloads Pi, Herdr, mise and (only when a configured package needs it)
+The image downloads Pi (MIT), Herdr (Apache-2.0), mise and (only when a configured package needs it)
 Claude Code at build time; each keeps its own licence and terms. Claude Code is
 proprietary, so a published image must not bundle it.
