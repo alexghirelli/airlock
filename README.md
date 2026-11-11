@@ -43,9 +43,10 @@ On **Windows**, use the `.zip`, preferably from inside WSL2 (see
 
 The first `airlock` in any project downloads the base image (about 300 MB, a few
 seconds to a minute; it is published to GHCR for every release, for amd64 and
-arm64) and every later project reuses it. Claude Code, which cannot be
-redistributed, is never in the published image: if your config needs it, airlock
-adds it on top, on your machine. If the download fails, or for a development build,
+arm64) and every later project reuses it. The image has Pi, Herdr and mise and
+nothing proprietary: other agents are installed on your machine, by their own
+installers, the first time you use them (see [Agents](#agents-use-the-one-you-prefer)).
+If the download fails, or for a development build,
 airlock builds the image locally instead (about two minutes, 1.3 GB). Set
 `AIRLOCK_BUILD_LOCAL=1` to always build locally, and `airlock build` to do it now.
 
@@ -199,7 +200,7 @@ Useful pieces:
 
 ```toml
 [pi]
-packages = ["npm:pi-claude-bridge@0.11.0"]   # installs Claude Code in the image too
+packages = ["npm:pi-claude-bridge@0.11.0"]   # needs Claude Code, which airlock then installs too
 default_model = "claude-bridge/claude-opus-5-5"
 
 [env]                                          # passed from your environment
@@ -258,9 +259,9 @@ your machine, in the cheapest place that fits:
 | You add | Where it lives | Cost |
 |---|---|---|
 | `extras.mise`, `[[setup]]`, Pi packages, logins | Docker volumes, filled when the sandbox starts | nothing to rebuild |
-| `extras.apt`, Claude Code | a layer built on top of the downloaded image | seconds, rebuilt when the list changes |
+| `extras.apt` | a layer built on top of the downloaded image | seconds, rebuilt when the list changes |
+| an agent other than Pi, or another Pi version | the tools volume, installed on first use (see [Agents](#agents-use-the-one-you-prefer)) | seconds to a minute, once per version |
 | `[image] dockerfile`, project `extras.apt` | a per-project image built on top of the base | seconds, rebuilt when the files change |
-| a different `pi.version` | a full local build (the published image has the pinned Pi) | a few minutes |
 
 A new airlock release publishes a new image; the first run after upgrading
 downloads it, and layers you had added are rebuilt on top. The old image is removed
@@ -302,6 +303,42 @@ hidden until the sandbox is recreated.
    `default_model = "claude-bridge/<id>"`, run `airlock login` (it runs
    `claude auth login`; the bridge uses Claude Code's login, not Pi's).
 3. **API key from the environment**: add it under `[env]` and export it on the host.
+
+## Agents: use the one you prefer
+
+Pi is the default and comes in the image. The agent is a setting, so you can run
+another one, at the version you want:
+
+```toml
+[agent]
+kind = "claude"                  # pi (default) | claude
+version = "pinned"               # pinned (tested with this airlock) | latest | "2.1.322"
+args = ["--dangerously-skip-permissions"]   # extra arguments; the sandbox is the boundary
+```
+
+`airlock --agent claude` does the same for one run, and `airlock review 123 --agent
+claude` for one worktree, so a Pi session and a Claude Code one can work side by
+side in the same Herdr. The first use installs the agent into the tools volume, a
+folder per version, so projects share the download and can use different versions;
+Claude Code comes from Anthropic's own installer and Pi from npm. Nothing is baked
+into the image, which also keeps it free of anything that cannot be redistributed.
+Then run `airlock login` once.
+
+What airlock does for you depends on the agent:
+
+| | Pi | Claude Code |
+|---|---|---|
+| Runs in a sandbox with the firewall, worktrees and Herdr workspaces | yes | yes |
+| Sandbox instructions (where you are, mounts, MCP servers) | yes | yes, added to its system prompt |
+| MCP servers from `[[mcp]]` | yes | yes |
+| Task of a worktree (`airlock review`, `wt focus`) | yes | yes |
+| Skills from mounts, the `concise` skill, `pi.default_model`, packages | yes | no, these are Pi's |
+| `--team` | yes | no |
+
+Inside the sandbox airlock marks the project as trusted for Claude Code (the project
+is the reason the sandbox exists) and skips its first-run screens. Other agents are
+not wired up yet; a `kind` is a small adapter, and adding one is a good first
+contribution.
 
 ## Security model
 
@@ -384,8 +421,9 @@ then take about a minute. They cover: isolation (with a positive control, so a
 missing firewall would be noticed), capability dropping, ownership, protected git
 files, worktrees (one sandbox each, none seeing another), untrusted project config, same-name projects, mounts,
 persistence, Herdr attach/detach/reattach through a real pseudo-terminal,
-`.airlockignore`, `audit`, git modes and `doctor`. The test that installs Pi
-packages and Claude Code is opt-in (`AIRLOCK_IT_SLOW=1`).
+`.airlockignore`, `audit`, git modes and `doctor`, and Claude Code and other Pi
+versions as the agent. The test that installs Pi packages together with Claude
+Code is opt-in (`AIRLOCK_IT_SLOW=1`).
 
 CI runs only the fast checks on every push (formatting, vet, unit tests,
 cross-compilation). The integration tests run weekly, and on demand from the
@@ -393,7 +431,7 @@ Actions tab (the `integration` workflow).
 
 The tests set `AIRLOCK_PRUNE_IMAGES=0` so the several image variants they build
 survive each other. Normally airlock removes superseded `airlock:*` tags after a
-build; the image is about 1.3 GB (1.8 GB with Claude Code).
+build; the image is about 1.3 GB.
 
 ### Releasing
 
@@ -413,6 +451,7 @@ line and at least one line of detail. The release is named after the version onl
 
 Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
-The image downloads Pi (MIT), Herdr (Apache-2.0), mise and (only when a configured package needs it)
-Claude Code at build time; each keeps its own licence and terms. Claude Code is
-proprietary, so a published image must not bundle it.
+The image downloads Pi (MIT), Herdr (Apache-2.0) and mise at build time; each keeps
+its own licence and terms. Claude Code is proprietary and is not in the image: when
+you choose it, Anthropic's installer fetches it onto your machine, under Anthropic's
+terms.
