@@ -69,6 +69,15 @@ if [[ "$(m '.git.mode')" == push ]]; then
   done < <(m '.git.hosts[]?')
 fi
 
+# --- Herdr's first-run screens (a welcome box, then a page offering agent integrations)
+# would greet every new sandbox; airlock installs the integrations it needs itself. A
+# config that is already there (yours, mounted in) is left as it is.
+herdr_cfg="$HOME/.config/herdr/config.toml"
+if [[ ! -e "$herdr_cfg" ]]; then
+  mkdir -p "$(dirname "$herdr_cfg")"
+  echo 'onboarding = false' >"$herdr_cfg"
+fi
+
 # --- Herdr <-> Pi state reporting (idempotent)
 herdr integration install pi >/dev/null 2>&1 || warn "'herdr integration install pi' failed"
 
