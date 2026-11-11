@@ -33,18 +33,41 @@ mkdir -p "$work/bin" "$work/myapp"
 ln -s "$(readlink -f "$bin")" "$work/bin/airlock"
 
 app="$work/myapp"
-git -C "$app" init -q
-git -C "$app" -c user.name=demo -c user.email=demo@example.org commit -q --allow-empty -m "Initial commit"
-printf '# myapp\n\nA small project to try airlock on.\n' > "$app/README.md"
+# A host home with decoy secrets, so the recording can show what the sandbox does not see.
+mkdir -p "$work/home/.ssh" "$work/home/.aws"
+echo "decoy, not a real key" > "$work/home/.ssh/id_ed25519"
+echo "decoy, not a real credential" > "$work/home/.aws/credentials"
+
+# A small project with a remote that has a pull request (refs/pull/7/head) on it.
+git init -q --bare -b main "$work/origin.git"
+git init -q -b main "$app"
+git -C "$app" remote add origin "$work/origin.git"
+cat > "$app/pagination.js" <<'JS'
+// Returns the items of page `page` (1-based).
+function paginate(items, page, size) {
+  const start = page * size; // bug: page is 1-based
+  return items.slice(start, start + size);
+}
+module.exports = { paginate };
+JS
+printf '# myapp\n\nA small API.\n' > "$app/README.md"
+g() { git -C "$app" -c user.name="$1" -c user.email="$1@example.org" "${@:2}"; }
+g Ada add -A && g Ada commit -q -m "Add pagination" && g Ada push -q origin main
+g Grace checkout -q -b fix
+sed -i 's/page \* size; \/\/ bug: page is 1-based/(page - 1) * size;/' "$app/pagination.js"
+g Grace commit -q -am "Fix off-by-one in pagination"
+g Grace push -q origin fix:refs/pull/7/head
+g Grace checkout -q main && g Grace branch -q -D fix
 
 # Logins and settings of the demo live in a volume of its own, removed with the sandbox,
 # so what is on your machine does not show up in the recording.
 export AIRLOCK_CREDENTIALS_SCOPE=per-project
 
 # A ready sandbox, so the recording starts at the first command.
-"$work/bin/airlock" exec "$app" -- true
+# (with the same HOME the recording uses, or airlock sees a changed configuration)
+HOME="$work/home" "$work/bin/airlock" exec "$app" -- airlock-herdr-up --no-focus   # the project's own Herdr workspace
 
-export AIRLOCK_DEMO_DIR="$app"
+export AIRLOCK_DEMO_DIR="$app" AIRLOCK_DEMO_HOME="$work/home"
 export PATH="$work/bin:$PATH"
 vhs assets/demo.tape
 ls -lh assets/demo.gif

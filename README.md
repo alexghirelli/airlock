@@ -6,7 +6,7 @@ but Docker. Run `airlock` in a project folder and it starts (or resumes) a dedic
 container for that project and attaches you to it, with [Pi](https://pi.dev) and
 [Herdr](https://herdr.dev) ready to work.
 
-![airlock: the agent is not root, reaches the internet, cannot reach your network; then Herdr opens with Pi](assets/demo.gif)
+![airlock: a prompt-injected agent cannot reach the host's secrets, the LAN, the firewall or the git hooks; then a pull request is reviewed in a second Herdr workspace](assets/demo.gif)
 
 Agents work freely inside the box. By default they cannot reach your home
 directory, your local network, your git credentials or the Docker socket. They can
