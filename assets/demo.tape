@@ -34,9 +34,14 @@ Sleep 2.5s
 # 3. Your network does not.
 Type "airlock exec -- curl -m 3 http://192.168.1.1"
 Enter
-Sleep 4.5s
+Sleep 3s
 
 # 4. Work: Herdr with Pi in the project.
 Type "airlock"
 Enter
-Sleep 9s
+Sleep 4s
+# Herdr's welcome box and its integrations page, shown once per sandbox.
+Enter
+Sleep 1s
+Escape
+Sleep 6s
