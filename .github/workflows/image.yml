@@ -1,0 +1,70 @@
+name: image
+
+# Publishes the base image to GHCR for every release, so a first run downloads it
+# instead of building it (see imagebuild.PublishedRef). It is its own workflow so a
+# failure can be re-run from the Actions tab without touching the release: airlock
+# falls back to a local build when the image is missing.
+#
+# The image is the default configuration only. Claude Code is never in it (it cannot
+# be redistributed); airlock adds it on the user's machine.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release to publish the image for, e.g. v0.2.0'
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.version || github.ref }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: build and push
+        run: |
+          tag="${{ inputs.version || github.ref_name }}"
+          version="${tag#v}"
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/airlock"
+          ctx="$(mktemp -d)"
+          go run ./scripts/imagectx "$ctx" > "$RUNNER_TEMP/build-args"
+          tags=(--tag "$image:$version")
+          case "$version" in *-*) ;; *) tags+=(--tag "$image:latest");; esac
+          docker buildx build --platform linux/amd64,linux/arm64 \
+            $(cat "$RUNNER_TEMP/build-args") "${tags[@]}" \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.version=$version" \
+            --label "org.opencontainers.image.licenses=Apache-2.0" \
+            --push "$ctx"
+          echo "IMAGE=$image:$version" >> "$GITHUB_ENV"
+      - name: smoke test both architectures
+        run: |
+          for platform in linux/amd64 linux/arm64; do
+            docker run --rm --platform "$platform" --entrypoint sh "$IMAGE" \
+              -c 'uname -m && pi --version && herdr --version && mise --version && ! command -v claude'
+          done
+      - name: check that anyone can download it
+        run: |
+          # New GHCR packages start private; make this one public once, in the
+          # package settings, and this check passes from then on.
+          docker logout ghcr.io
+          docker buildx imagetools inspect "$IMAGE" >/dev/null || {
+            echo "::error::$IMAGE is not public. Package settings -> Change visibility -> Public (once)."
+            exit 1
+          }

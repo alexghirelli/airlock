@@ -161,6 +161,31 @@ func (d *Docker) PruneImages(ctx context.Context) error {
 	return err
 }
 
+func (d *Docker) PullImage(ctx context.Context, ref string, w io.Writer) error {
+	resp, err := d.cli.ImagePull(ctx, ref, client.ImagePullOptions{})
+	if err != nil {
+		return fmt.Errorf("pull %s: %w", ref, err)
+	}
+	defer resp.Close()
+	if w == nil {
+		w = io.Discard
+	}
+	for msg, err := range resp.JSONMessages(ctx) {
+		if err != nil {
+			return fmt.Errorf("pull %s: %w", ref, err)
+		}
+		if msg.Status != "" && msg.Progress == nil {
+			fmt.Fprintln(w, msg.Status)
+		}
+	}
+	return nil
+}
+
+func (d *Docker) TagImage(ctx context.Context, src, dst string) error {
+	_, err := d.cli.ImageTag(ctx, client.ImageTagOptions{Source: src, Target: dst})
+	return err
+}
+
 func (d *Docker) BuildImage(ctx context.Context, req BuildRequest) error {
 	args := map[string]*string{}
 	for k, v := range req.Args {

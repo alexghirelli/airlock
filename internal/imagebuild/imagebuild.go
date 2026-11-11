@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"os"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -17,6 +19,56 @@ import (
 	"github.com/alexghirelli/airlock/internal/config"
 	"github.com/alexghirelli/airlock/internal/version"
 )
+
+// Registry is where the release workflow publishes the base image.
+// AIRLOCK_IMAGE_REGISTRY points airlock at a mirror or a fork instead.
+const Registry = "ghcr.io/alexghirelli/airlock"
+
+func registry() string {
+	if r := os.Getenv("AIRLOCK_IMAGE_REGISTRY"); r != "" {
+		return strings.TrimSuffix(r, "/")
+	}
+	return Registry
+}
+
+var releaseVersion = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$`)
+
+// PublishedRef returns the published image that matches this airlock release,
+// or false for a development build (nothing is published for those) or when the
+// user asked for local builds with AIRLOCK_BUILD_LOCAL=1.
+func PublishedRef() (string, bool) {
+	if os.Getenv("AIRLOCK_BUILD_LOCAL") == "1" || !releaseVersion.MatchString(version.Version) {
+		return "", false
+	}
+	return registry() + ":" + version.Tag(), true
+}
+
+// UsesPublished reports whether the published image can stand in for a local
+// build with this configuration. It is built with the pinned Pi, so another Pi
+// version needs the local build; Claude Code and extra apt packages are added
+// on top of it (see LayerDockerfile).
+func UsesPublished(c *config.Config) bool { return c.PiVersion() == config.PinnedPiVersion }
+
+// LayerDockerfile is what the configuration adds to the published image: extra
+// apt packages and, when needed, Claude Code (which cannot be redistributed, so
+// it is never in the published image). It returns nil when nothing is added.
+func LayerDockerfile(from string, c *config.Config) []byte {
+	if len(c.Extras.Apt) == 0 && !c.NeedsClaudeCode() {
+		return nil
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "FROM %s\nUSER root\n", from)
+	if len(c.Extras.Apt) > 0 {
+		fmt.Fprintf(&b, "RUN apt-get update && apt-get install -y --no-install-recommends %s && rm -rf /var/lib/apt/lists/*\n", strings.Join(c.Extras.Apt, " "))
+	}
+	if c.NeedsClaudeCode() {
+		// Same install as the Dockerfile's agents stage, on Pi's private Node.
+		fmt.Fprintf(&b, "RUN /opt/pi/shims/npm install -g --prefix /opt/claude %s@%s \\\n && ln -s \"$(readlink -f /opt/claude/bin/claude)\" /usr/local/bin/claude \\\n && claude --version\n",
+			"@anthropic-ai/claude-code", config.PinnedClaudeCodeVersion)
+	}
+	b.WriteString("USER root\n")
+	return []byte(b.String())
+}
 
 // BaseRef returns the tag of the base image for the given configuration. It
 // changes whenever a build input (extras, Pi version, Claude Code) changes, so

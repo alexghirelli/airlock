@@ -41,9 +41,13 @@ On **Windows**, use the `.zip`, preferably from inside WSL2 (see
 
 **From source**: `go build -o airlock ./cmd/airlock` in a clone of the repository.
 
-There is no published container image: the first `airlock` in any project builds the
-image on your machine (about two minutes, 1.3 GB, downloads Pi, Herdr and mise) and
-every later project reuses it.
+The first `airlock` in any project downloads the base image (about 300 MB, a few
+seconds to a minute; it is published to GHCR for every release, for amd64 and
+arm64) and every later project reuses it. Claude Code, which cannot be
+redistributed, is never in the published image: if your config needs it, airlock
+adds it on top, on your machine. If the download fails, or for a development build,
+airlock builds the image locally instead (about two minutes, 1.3 GB). Set
+`AIRLOCK_BUILD_LOCAL=1` to always build locally, and `airlock build` to do it now.
 
 ## Quick start
 
@@ -246,6 +250,23 @@ With `watch`, a step also reruns when the files under those paths change (size o
 modification time; `.git`, `__pycache__`, `node_modules` and `*.log` are ignored),
 so a copy of a tool from a mount stays current.
 
+### Where your additions go
+
+The published image is only the base. What you add never changes it, and is kept on
+your machine, in the cheapest place that fits:
+
+| You add | Where it lives | Cost |
+|---|---|---|
+| `extras.mise`, `[[setup]]`, Pi packages, logins | Docker volumes, filled when the sandbox starts | nothing to rebuild |
+| `extras.apt`, Claude Code | a layer built on top of the downloaded image | seconds, rebuilt when the list changes |
+| `[image] dockerfile`, project `extras.apt` | a per-project image built on top of the base | seconds, rebuilt when the files change |
+| a different `pi.version` | a full local build (the published image has the pinned Pi) | a few minutes |
+
+A new airlock release publishes a new image; the first run after upgrading
+downloads it, and layers you had added are rebuilt on top. The old image is removed
+once nothing uses it. `airlock update` rebuilds from scratch locally instead of
+downloading.
+
 The configuration is read when the sandbox starts. If you change it while a sandbox
 is running, `airlock` says so; `airlock restart` stops and starts it again to apply
 the change (sessions inside it end).
@@ -348,8 +369,7 @@ What it does **not** protect against:
 | `microvm` / `vm` backends | Rejected by the CLI. `gvisor` starts the container with `runsc` but has not been run through the test suite. |
 | `airlock login` | Runs Pi's and Claude Code's own login flows; checked up to the credential prompt only (no real login was made). `--reset` is untested. |
 | `[[mcp]]` | Written into Pi's MCP config (remote and stdio servers); the entry and the mounted command are tested, but not a full session against a real MCP server. |
-| A published container image | The image is built locally on first run. |
-| Windows and macOS | The release archives compile for them, but airlock has only been run on Linux. |
+| Windows | The release archive compiles for it, but airlock has not been run there (WSL2 is the way to go, see `airlock doctor`). |
 
 ## Development
 
