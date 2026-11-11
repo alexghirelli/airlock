@@ -9,7 +9,7 @@ const Template = `# airlock user configuration.
 
 [sandbox]
 lifetime = "persistent"          # persistent | ephemeral
-ui = "herdr"                     # herdr | pi | shell
+ui = "herdr"                     # herdr | agent (the agent alone, no Herdr) | shell
 backend = "container"            # container | gvisor | microvm | vm
 memory = "8g"
 cpus = 4
@@ -33,6 +33,13 @@ hosts = ["github.com"]           # hosts the token is offered to
 review_remote = ""               # remote that "airlock review" fetches from (empty = the one a URL points at, else gerrit, origin, upstream)
 gerrit_remote = ""               # remote that "airlock wt review" fetches from (empty = "gerrit" if it exists, else "origin")
 
+[agent]
+kind = "pi"                      # pi | claude: the agent that opens in the sandbox (airlock --agent claude, for one run)
+version = "pinned"               # pinned (tested with this airlock) | latest | an exact version such as "2.1.322"
+args = []                        # extra arguments for it, e.g. ["--dangerously-skip-permissions"] for Claude Code
+# Pi is in the image; Claude Code is installed by Anthropic's own installer into the
+# tools volume the first time it is needed, so it is never part of the airlock image.
+
 [pi]
 version = "latest-pinned"        # or an exact version such as "1.5.2"
 packages = []                    # Pi packages to install, e.g. ["npm:pi-claude-bridge@0.11.0"]
@@ -40,8 +47,8 @@ default_model = ""               # e.g. "anthropic/claude-opus-5-5"; empty = Pi'
 # settings = { quietStartup = true }   # merged into Pi's settings.json
 
 [extras]
-claude_code = "auto"             # auto (when a Pi package needs it) | true | false
-apt = []                         # extra Debian packages baked into the local image
+claude_code = "auto"             # install Claude Code too: auto (when a Pi package needs it) | true | false
+apt = []                         # extra Debian packages, added in a layer on top of the image
 mise = []                        # e.g. ["node@22"], preinstalled globally
 
 # Environment variables passed from the host into the sandbox (stored in the

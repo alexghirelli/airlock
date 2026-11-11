@@ -21,6 +21,7 @@ const ProjectConfigName = ".airlock.toml"
 // Flags are CLI overrides. Zero values mean "not set".
 type Flags struct {
 	UI        string
+	Agent     string
 	Network   string
 	Backend   string
 	Team      *bool
@@ -342,6 +343,10 @@ func applyProjectKey(res *Result, key string, v any, warn func(string, ...any)) 
 func applyFlags(c *Config, f Flags) {
 	if f.UI != "" {
 		c.Sandbox.UI = f.UI
+	}
+	if f.Agent != "" && f.Agent != c.Agent.Kind {
+		// The configured version belongs to the configured agent.
+		c.Agent.Kind, c.Agent.Version = f.Agent, "pinned"
 	}
 	if f.Network != "" {
 		c.Network.Mode = f.Network
