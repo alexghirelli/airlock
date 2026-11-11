@@ -19,7 +19,10 @@ var (
 	domainRe  = regexp.MustCompile(`^(\*\.)?([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$`)
 	envNameRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 	hostRe    = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]+)?$`)
-	pkgRe     = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9@:_./+~#-]*$`)
+	// A version goes into a shell command line at install time: digits, dots and
+	// the usual pre-release characters only.
+	agentVersionRe = regexp.MustCompile(`^(pinned|latest|[0-9][0-9A-Za-z.+-]*)$`)
+	pkgRe          = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9@:_./+~#-]*$`)
 )
 
 func requiresClaudeCode(pkg string) bool {
@@ -52,6 +55,13 @@ func (c *Config) Validate() error {
 	add(oneOf("git.mode", c.Git.Mode, GitModes))
 	add(oneOf("sandbox.worktree_isolation", c.Sandbox.WorktreeIsolation, WorktreeIsolations))
 	add(oneOf("extras.claude_code", c.Extras.ClaudeCode, ClaudeModes))
+	add(oneOf("agent.kind", c.Agent.Kind, AgentKinds))
+	if v := c.Agent.Version; v != "" && !agentVersionRe.MatchString(v) {
+		add(fmt.Errorf("agent.version: %q is not pinned, latest or a version such as 2.1.322", v))
+	}
+	if c.Team.Enabled && c.Agent.Kind != "pi" {
+		add(errors.New("team.enabled needs agent.kind = \"pi\": the team runs on Pi"))
+	}
 
 	if !memoryRe.MatchString(c.Sandbox.Memory) {
 		add(fmt.Errorf("sandbox.memory: %q is not a size like 512m or 8g", c.Sandbox.Memory))

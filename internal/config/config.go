@@ -8,7 +8,7 @@ package config
 // config resolves to these.
 const (
 	PinnedPiVersion         = "1.5.2"
-	PinnedClaudeCodeVersion = "latest"
+	PinnedClaudeCodeVersion = "2.1.322"
 	PinnedNodeMajor         = "22"
 )
 
@@ -18,6 +18,7 @@ type Config struct {
 	Network     Network        `toml:"network"`
 	Credentials Credentials    `toml:"credentials"`
 	Git         Git            `toml:"git"`
+	Agent       Agent          `toml:"agent"`
 	Pi          Pi             `toml:"pi"`
 	Extras      Extras         `toml:"extras"`
 	Image       Image          `toml:"image"`
@@ -36,7 +37,7 @@ type Config struct {
 
 type Sandbox struct {
 	Lifetime     string  `toml:"lifetime"` // persistent | ephemeral
-	UI           string  `toml:"ui"`       // herdr | pi | shell
+	UI           string  `toml:"ui"`       // herdr | agent | shell (pi: older name of agent)
 	Backend      string  `toml:"backend"`  // container | gvisor | microvm | vm
 	Memory       string  `toml:"memory"`   // e.g. "8g"
 	CPUs         float64 `toml:"cpus"`
@@ -69,6 +70,15 @@ type Git struct {
 	// changes, pull requests and merge requests alike. Empty means: the remote a
 	// change URL points at, otherwise "gerrit", "origin" and "upstream" in turn.
 	ReviewRemote string `toml:"review_remote"`
+}
+
+// Agent picks the agent harness that runs in the sandbox and its version. Only Pi
+// is in the image; the others are installed by their own installer into the tools
+// volume the first time they are needed, so nothing proprietary is redistributed.
+type Agent struct {
+	Kind    string   `toml:"kind"`    // pi | claude
+	Version string   `toml:"version"` // pinned | latest | an exact version
+	Args    []string `toml:"args"`    // extra arguments for the agent, e.g. Claude Code's permission mode
 }
 
 type Pi struct {
@@ -170,6 +180,7 @@ func Defaults() Config {
 		Credentials: Credentials{Scope: "shared"},
 		Agents:      Agents{Concise: true},
 		Git:         Git{Mode: "local", Hosts: []string{"github.com"}},
+		Agent:       Agent{Kind: "pi", Version: "pinned", Args: []string{}},
 		Pi:          Pi{Version: "latest-pinned", Packages: []string{}, Settings: map[string]any{}},
 		Extras:      Extras{ClaudeCode: "auto", Apt: []string{}, Mise: []string{}},
 		Env:         map[string]Env{},
@@ -187,7 +198,7 @@ func Defaults() Config {
 // Enumerations accepted by the validator.
 var (
 	Lifetimes    = []string{"persistent", "ephemeral"}
-	UIs          = []string{"herdr", "pi", "shell"}
+	UIs          = []string{"herdr", "agent", "pi", "shell"} // pi is the older name of agent
 	Backends     = []string{"container", "gvisor", "microvm", "vm"}
 	NetworkModes = []string{"open", "open-no-lan", "allowlist"} // loosest to strictest
 	CredScopes   = []string{"shared", "per-project"}
@@ -195,6 +206,7 @@ var (
 	// WorktreeIsolations are the values of sandbox.worktree_isolation.
 	WorktreeIsolations = []string{"none", "reviews", "all"}
 	ClaudeModes        = []string{"auto", "true", "false"}
+	AgentKinds         = []string{"pi", "claude"}
 	MountModes         = []string{"ro", "rw"}
 	Thinkings          = []string{"off", "minimal", "low", "medium", "high", "xhigh", "max"}
 )
@@ -209,16 +221,35 @@ func NetworkStrictness(mode string) int {
 	return -1
 }
 
-// PiVersion resolves the configured Pi version to a concrete npm version.
+// PiVersion resolves the Pi version the sandbox runs to a concrete npm version.
+// The image has the pinned one; any other is installed into the tools volume.
 func (c *Config) PiVersion() string {
+	if c.Agent.Kind == "pi" && !pinned(c.Agent.Version) {
+		return c.Agent.Version
+	}
 	if c.Pi.Version == "" || c.Pi.Version == "latest-pinned" {
 		return PinnedPiVersion
 	}
 	return c.Pi.Version
 }
 
-// NeedsClaudeCode reports whether the Claude Code CLI must be in the image.
+// ClaudeVersion resolves the Claude Code version to install: "latest" or an exact version.
+func (c *Config) ClaudeVersion() string {
+	if c.Agent.Kind == "claude" && !pinned(c.Agent.Version) {
+		return c.Agent.Version
+	}
+	return PinnedClaudeCodeVersion
+}
+
+func pinned(v string) bool { return v == "" || v == "pinned" || v == "latest-pinned" }
+
+// NeedsClaudeCode reports whether Claude Code must be installed in the sandbox: it
+// is the agent, or something else uses it (a Pi package that goes through Claude
+// Code, or extras.claude_code = "true").
 func (c *Config) NeedsClaudeCode() bool {
+	if c.Agent.Kind == "claude" {
+		return true
+	}
 	switch c.Extras.ClaudeCode {
 	case "true":
 		return true

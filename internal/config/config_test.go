@@ -299,3 +299,60 @@ func TestProjectConfigCannotDefineSetup(t *testing.T) {
 		t.Fatalf("user setup: %v %+v", err, u)
 	}
 }
+
+func TestAgentDefaultsAndVersions(t *testing.T) {
+	c := Defaults()
+	if c.Agent.Kind != "pi" || c.PiVersion() != PinnedPiVersion || c.ClaudeVersion() != PinnedClaudeCodeVersion || c.NeedsClaudeCode() {
+		t.Errorf("defaults: %+v", c.Agent)
+	}
+	r, err := load(t, "[agent]\nkind = \"claude\"\nversion = \"2.0.1\"\nargs = [\"--dangerously-skip-permissions\"]\n", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cc := r.Config
+	if !cc.NeedsClaudeCode() || cc.ClaudeVersion() != "2.0.1" || cc.PiVersion() != PinnedPiVersion {
+		t.Errorf("claude agent: kind=%s claude=%s pi=%s", cc.Agent.Kind, cc.ClaudeVersion(), cc.PiVersion())
+	}
+	// The version belongs to the agent it is set for.
+	r, err = load(t, "[agent]\nversion = \"1.9.0\"\n", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Config.PiVersion() != "1.9.0" || r.Config.ClaudeVersion() != PinnedClaudeCodeVersion {
+		t.Errorf("pi version: pi=%s claude=%s", r.Config.PiVersion(), r.Config.ClaudeVersion())
+	}
+}
+
+func TestAgentValidation(t *testing.T) {
+	for name, toml := range map[string]string{
+		"unknown agent":        "[agent]\nkind = \"emacs\"\n",
+		"version with a shell": "[agent]\nkind = \"claude\"\nversion = \"1.0; rm -rf /\"\n",
+		"team needs pi":        "[agent]\nkind = \"claude\"\n[team]\nenabled = true\n",
+	} {
+		if _, err := load(t, toml, "", nil); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
+func TestAgentFlagAndProjectConfig(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, ProjectConfigName), "[agent]\nkind = \"claude\"\n")
+	user := filepath.Join(dir, "user.toml")
+	write(t, user, "[agent]\nkind = \"pi\"\nversion = \"1.9.0\"\n")
+	r, err := Load(LoadOptions{ProjectDir: dir, UserConfigPath: user, Getenv: func(string) string { return "" }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// An untrusted project cannot pick what gets installed and run.
+	if r.Config.Agent.Kind != "pi" {
+		t.Errorf("project config chose the agent: %s", r.Config.Agent.Kind)
+	}
+	r, err = Load(LoadOptions{ProjectDir: dir, UserConfigPath: user, Flags: Flags{Agent: "claude"}, Getenv: func(string) string { return "" }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Config.Agent.Kind != "claude" || r.Config.ClaudeVersion() != PinnedClaudeCodeVersion {
+		t.Errorf("--agent claude: %+v (claude %s)", r.Config.Agent, r.Config.ClaudeVersion())
+	}
+}
