@@ -1,7 +1,7 @@
 // Command imagectx writes the base image's build context into a directory and
 // prints its build arguments, one --build-arg flag per line. The release workflow
 // uses it to publish exactly the image `airlock build` would make locally, for the
-// default configuration (no Claude Code, no extra packages).
+// default configuration (no extra packages).
 //
 //	go run ./scripts/imagectx <dir>
 package main
@@ -61,7 +61,6 @@ func run(dir string) error {
 		}
 	}
 	c := &config.Config{}
-	c.Extras.ClaudeCode = "false"
 	args := imagebuild.BaseArgs(c)
 	keys := make([]string, 0, len(args))
 	for k := range args {

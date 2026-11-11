@@ -188,7 +188,7 @@ func (m *Manager) ensureBase(ctx context.Context, ref string, mode BuildMode) er
 func (m *Manager) pullBase(ctx context.Context, ref string) bool {
 	c := &m.Config.Config
 	pub, ok := imagebuild.PublishedRef()
-	if !ok || !imagebuild.UsesPublished(c) {
+	if !ok {
 		return false
 	}
 	m.logf("airlock: downloading the airlock image (first run only)")

@@ -40,31 +40,32 @@ func TestPublishedRefCanBeTurnedOff(t *testing.T) {
 
 func TestLayerDockerfile(t *testing.T) {
 	plain := &config.Config{}
-	plain.Extras.ClaudeCode = "false"
 	if df := LayerDockerfile("img", plain); df != nil {
 		t.Errorf("nothing to add, got a layer:\n%s", df)
 	}
-	withApt := *plain
+	// Agents never go into the image: Claude Code is installed at run time.
+	plain.Agent.Kind = "claude"
+	if df := LayerDockerfile("img", plain); df != nil {
+		t.Errorf("an agent must not add an image layer:\n%s", df)
+	}
+	withApt := &config.Config{}
 	withApt.Extras.Apt = []string{"ffmpeg", "tree"}
-	df := string(LayerDockerfile("img", &withApt))
+	df := string(LayerDockerfile("img", withApt))
 	if !strings.HasPrefix(df, "FROM img\n") || !strings.Contains(df, "apt-get install -y --no-install-recommends ffmpeg tree") || strings.Contains(df, "claude") {
 		t.Errorf("apt layer:\n%s", df)
 	}
-	withClaude := *plain
-	withClaude.Extras.ClaudeCode = "true"
-	df = string(LayerDockerfile("img", &withClaude))
-	if !strings.Contains(df, "/opt/pi/shims/npm install -g --prefix /opt/claude @anthropic-ai/claude-code@") || !strings.Contains(df, "/usr/local/bin/claude") || strings.Contains(df, "apt-get") {
-		t.Errorf("claude layer:\n%s", df)
-	}
 }
 
-func TestOtherPiVersionNeedsLocalBuild(t *testing.T) {
-	c := &config.Config{}
-	if !UsesPublished(c) {
-		t.Error("the pinned Pi should use the published image")
+func TestBaseImageIsTheSameForEveryAgent(t *testing.T) {
+	a, b := &config.Config{}, &config.Config{}
+	b.Agent.Kind, b.Agent.Version = "claude", "latest"
+	b.Pi.Version = "9.9.9"
+	if BaseRef(a) != BaseRef(b) {
+		t.Errorf("the agent or its version changed the image: %s vs %s", BaseRef(a), BaseRef(b))
 	}
-	c.Pi.Version = "9.9.9"
-	if UsesPublished(c) {
-		t.Error("a different Pi version must build locally")
+	for k, v := range BaseArgs(b) {
+		if strings.Contains(strings.ToLower(k+v), "claude") || v == "9.9.9" {
+			t.Errorf("build arg %s=%s", k, v)
+		}
 	}
 }

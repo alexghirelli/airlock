@@ -43,35 +43,18 @@ func PublishedRef() (string, bool) {
 	return registry() + ":" + version.Tag(), true
 }
 
-// UsesPublished reports whether the published image can stand in for a local
-// build with this configuration. It is built with the pinned Pi, so another Pi
-// version needs the local build; Claude Code and extra apt packages are added
-// on top of it (see LayerDockerfile).
-func UsesPublished(c *config.Config) bool { return c.PiVersion() == config.PinnedPiVersion }
-
-// LayerDockerfile is what the configuration adds to the published image: extra
-// apt packages and, when needed, Claude Code (which cannot be redistributed, so
-// it is never in the published image). It returns nil when nothing is added.
+// LayerDockerfile is what the configuration adds to the downloaded image: extra
+// apt packages. It returns nil when nothing is added. Agents are not here: Claude
+// Code and other Pi versions are installed into the tools volume when needed.
 func LayerDockerfile(from string, c *config.Config) []byte {
-	if len(c.Extras.Apt) == 0 && !c.NeedsClaudeCode() {
+	if len(c.Extras.Apt) == 0 {
 		return nil
 	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "FROM %s\nUSER root\n", from)
-	if len(c.Extras.Apt) > 0 {
-		fmt.Fprintf(&b, "RUN apt-get update && apt-get install -y --no-install-recommends %s && rm -rf /var/lib/apt/lists/*\n", strings.Join(c.Extras.Apt, " "))
-	}
-	if c.NeedsClaudeCode() {
-		// Same install as the Dockerfile's agents stage, on Pi's private Node.
-		fmt.Fprintf(&b, "RUN /opt/pi/shims/npm install -g --prefix /opt/claude %s@%s \\\n && ln -s \"$(readlink -f /opt/claude/bin/claude)\" /usr/local/bin/claude \\\n && claude --version\n",
-			"@anthropic-ai/claude-code", config.PinnedClaudeCodeVersion)
-	}
-	b.WriteString("USER root\n")
-	return []byte(b.String())
+	return ExtrasDockerfile(from, c.Extras.Apt)
 }
 
 // BaseRef returns the tag of the base image for the given configuration. It
-// changes whenever a build input (extras, Pi version, Claude Code) changes, so
+// changes whenever a build input (extra packages, the pinned Pi) changes, so
 // editing the config rebuilds the image instead of silently reusing a stale one.
 func BaseRef(c *config.Config) string {
 	return fmt.Sprintf("airlock:%s-%s", version.Tag(), shortHash(baseInputs(c)))
@@ -81,8 +64,7 @@ func baseInputs(c *config.Config) string {
 	apt := append([]string(nil), c.Extras.Apt...)
 	sort.Strings(apt)
 	return strings.Join([]string{
-		"pi=" + c.PiVersion(),
-		fmt.Sprintf("claude=%v", c.NeedsClaudeCode()),
+		"pi=" + config.PinnedPiVersion,
 		"apt=" + strings.Join(apt, ","),
 		"src=" + assetsHash(),
 	}, ";")
@@ -104,18 +86,13 @@ func assetsHash() string {
 	return hex.EncodeToString(h.Sum(nil))[:12]
 }
 
-// BaseArgs are the Dockerfile build arguments for the base image.
+// BaseArgs are the Dockerfile build arguments for the base image. The image has
+// the pinned Pi only; other Pi versions and the other agents are installed later.
 func BaseArgs(c *config.Config) map[string]string {
-	claude := "0"
-	if c.NeedsClaudeCode() {
-		claude = "1"
-	}
 	return map[string]string{
-		"NODE_VERSION":        config.PinnedNodeMajor,
-		"PI_VERSION":          c.PiVersion(),
-		"CLAUDE_CODE":         claude,
-		"CLAUDE_CODE_VERSION": config.PinnedClaudeCodeVersion,
-		"EXTRA_APT":           strings.Join(c.Extras.Apt, " "),
+		"NODE_VERSION": config.PinnedNodeMajor,
+		"PI_VERSION":   config.PinnedPiVersion,
+		"EXTRA_APT":    strings.Join(c.Extras.Apt, " "),
 	}
 }
 
@@ -139,6 +116,8 @@ func BaseContext() (io.Reader, error) {
 		{"image/profile-path.sh", "profile-path.sh"},
 		{"image/pi-wrapper.sh", "pi-wrapper.sh"},
 		{"image/npm-wrapper.sh", "npm-wrapper.sh"},
+		{"image/claude-wrapper.sh", "claude-wrapper.sh"},
+		{"image/agent-install.sh", "agent-install.sh"},
 	} {
 		data, err := airlock.Assets.ReadFile(f.src)
 		if err != nil {
