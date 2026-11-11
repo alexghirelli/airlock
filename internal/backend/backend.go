@@ -136,6 +136,10 @@ type Backend interface {
 	// uses. Images airlock did not build are never touched.
 	PruneImages(ctx context.Context) error
 	BuildImage(ctx context.Context, req BuildRequest) error
+	// PullImage downloads an image from its registry, writing progress to w.
+	PullImage(ctx context.Context, ref string, w io.Writer) error
+	// TagImage gives an existing local image another name.
+	TagImage(ctx context.Context, src, dst string) error
 
 	Create(ctx context.Context, spec Spec) error
 	Start(ctx context.Context, name string) error

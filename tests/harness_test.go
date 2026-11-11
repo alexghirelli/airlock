@@ -27,6 +27,8 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	airlockBin = filepath.Join(dir, "airlock")
+	// The suite builds its image locally; the pull path has its own test.
+	os.Setenv("AIRLOCK_BUILD_LOCAL", "1")
 	// A fixed version keeps the image tag stable across commits, so CI can cache
 	// the image (the tag also hashes the image sources).
 	build := exec.Command("go", "build", "-ldflags", "-X github.com/alexghirelli/airlock/internal/version.Version=0.0.0-test",

@@ -164,6 +164,9 @@ func (m *Manager) ensureBase(ctx context.Context, ref string, mode BuildMode) er
 		if ok {
 			return nil
 		}
+		if m.pullBase(ctx, ref) {
+			return nil
+		}
 		m.logf("airlock: building the airlock image (first run only; this takes a few minutes)")
 	}
 	bctx, err := imagebuild.BaseContext()
@@ -175,6 +178,47 @@ func (m *Manager) ensureBase(ctx context.Context, ref string, mode BuildMode) er
 		Context: bctx, Tags: []string{ref, "airlock:" + version.Tag()}, Dockerfile: "Dockerfile",
 		Args: imagebuild.BaseArgs(c), NoCache: mode == BuildFresh, Pull: mode == BuildFresh,
 	})
+}
+
+// pullBase gets the base image from the registry instead of building it, which
+// takes seconds instead of minutes. The image is published per release, built
+// from the same files as a local build; Claude Code and extra apt packages are
+// added on top of it here. It reports false, after saying why, when the caller
+// should build locally instead.
+func (m *Manager) pullBase(ctx context.Context, ref string) bool {
+	c := &m.Config.Config
+	pub, ok := imagebuild.PublishedRef()
+	if !ok || !imagebuild.UsesPublished(c) {
+		return false
+	}
+	m.logf("airlock: downloading the airlock image (first run only)")
+	var tail bytes.Buffer
+	if err := m.B.PullImage(ctx, pub, &tail); err != nil {
+		m.logf("airlock: could not download %s (%v); building it locally", pub, err)
+		return false
+	}
+	tags := []string{ref, "airlock:" + version.Tag()}
+	// The registry name is dropped once the image has its local names, so old
+	// releases do not pile up under a second name; the layers stay.
+	defer func() { _ = m.B.RemoveImageTag(ctx, pub) }()
+	if df := imagebuild.LayerDockerfile(pub, c); df != nil {
+		lctx, err := imagebuild.SingleFileContext(df)
+		if err == nil {
+			err = m.build(ctx, backend.BuildRequest{Context: lctx, Tags: tags, Dockerfile: "Dockerfile"})
+		}
+		if err != nil {
+			m.logf("airlock: could not add your extras to the downloaded image (%v); building it locally", err)
+			return false
+		}
+		return true
+	}
+	for _, t := range tags {
+		if err := m.B.TagImage(ctx, pub, t); err != nil {
+			m.logf("airlock: could not tag the downloaded image (%v); building it locally", err)
+			return false
+		}
+	}
+	return true
 }
 
 // build runs an image build, showing the log only when verbose or on failure.
