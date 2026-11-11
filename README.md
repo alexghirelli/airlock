@@ -88,7 +88,8 @@ the same session**, so you switch between them without opening terminals.
 
 ```sh
 airlock wt add rate-limit "rate limiting of the API, only includes/api/"
-airlock review 12345                       # the latest patchset of Gerrit change 12345
+airlock review 12345                       # a Gerrit change, a GitHub pull request or a GitLab merge request
+airlock review https://github.com/acme/widgets/pull/321     # also GitLab merge requests and Bitbucket pull requests
 airlock review https://gerrit.example.org/r/c/core/+/12345/3 "check the SQL"
 airlock wt                                 # worktrees, branches, changes, sandboxes, focus
 airlock wt open rate-limit                 # come back to one
@@ -98,12 +99,22 @@ airlock wt rm review-12345                 # remove the worktree, keep the branc
 
 - `add` creates the worktree under `.worktrees/` (git-excluded) on a new branch from
   `HEAD` (`-b` to name it or use an existing or remote branch, `--from` to start
-  elsewhere). `review` fetches `refs/changes/NN/12345/P` **on the host**, where your
-  Gerrit credentials are, and checks it out on a **local branch** `review/12345`, so
-  a review can include changes of your own. Run it again and the branch moves to the
-  newest patchset, unless that would lose uncommitted changes or local commits: then it
-  says so and prints the `git rebase --onto` to run. The remote is `gerrit` if the
-  repository has one, otherwise `origin`; `git.gerrit_remote` changes it.
+  elsewhere). `review` takes a Gerrit change, a GitHub pull request or a GitLab merge request. It fetches
+  the ref the server publishes for it (`refs/changes/NN/N/P`, `refs/pull/N/head`,
+  `refs/merge-requests/N/head`, `refs/pull-requests/N/from`) **on the host**, where your git credentials are: it needs no
+  API and no token, only a remote that git can already reach. It checks the result out on a
+  **local branch** (`review/12345`, `review/pr-321`, `review/mr-45`, `review/bb-7`), so a review can include
+  changes of your own. Run it again and the branch moves to the newest patchset or head,
+  unless that would lose uncommitted changes or local commits: then it says so and prints
+  the `git rebase --onto` to run.
+- What you can give it: the **URL** of the change (it picks the remote that points at that
+  repository, so a pull request against `upstream` works from a fork); a **number** (`12345`,
+  or `12345/3` for a Gerrit patchset), which airlock looks up on `gerrit`, `origin` and
+  `upstream` in turn, asking each which kind of change that number is; or `pr:12`, `mr:12`,
+  `bb:7`, `gerrit:12345` when a number exists as more than one kind. Gitea and Forgejo pull
+  requests work like GitHub's. Bitbucket means Server / Data Center; Bitbucket Cloud does not
+  publish pull requests as git refs, so airlock says so and points to `wt add -b <branch>`. `git.review_remote` pins the remote (`git.gerrit_remote` does the
+  same for Gerrit only).
 - Both start the sandbox and attach. If another terminal already has Herdr open on
   that sandbox, they stay quiet instead: the new workspace appears there, without taking
   its focus, and nothing attaches (`airlock wt open <name>` brings you to it). `--attach`
@@ -111,9 +122,13 @@ airlock wt rm review-12345                 # remove the worktree, keep the branc
   holding that terminal leaves a small file in its cache folder, which dies with the
   terminal; a Herdr left behind inside the sandbox by a closed window does not count.
 - **A task per worktree.** Text after the name or change is the worktree's *focus*.
-  A review also gets a task of its own, written from the fetched commit: the change,
-  the patchset, the subject and the author, with the rules of a review (no push, no
-  edits unless asked, findings by file) and a pointer to the Gerrit tools for comments.
+  A review also gets a task of its own, written from the fetched commit: what is under
+  review, the commit (by hash, so it holds even if the branch could not be moved), the
+  subject and the author, with the rules of a review (no push or merge, no edits unless asked,
+  findings by file) and a pointer to the forge's tools for the description and comments.
+  A pull or merge request can hold several commits and its target branch only exists on the
+  forge: the task gives a likely base (the merge-base with the remote's default branch) and
+  tells the agent to check it.
   Pi reads both every time it starts in the worktree, so every new session there has
   its scope, and `wt focus` applies to the next one. They are files in the worktree's
   git directory, not in the checkout, so they never show in `git status`.
