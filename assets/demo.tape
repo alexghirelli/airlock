@@ -66,9 +66,4 @@ Sleep 2.5s
 
 Type "airlock wt open review-pr-7"
 Enter
-Sleep 4s
-# Herdr's welcome box and its integrations page, shown once per sandbox.
-Enter
-Sleep 1s
-Escape
-Sleep 7s
+Sleep 9s
