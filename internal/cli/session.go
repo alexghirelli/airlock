@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/alexghirelli/airlock/internal/backend"
+	"github.com/alexghirelli/airlock/internal/config"
 	"github.com/alexghirelli/airlock/internal/sandbox"
 	"github.com/alexghirelli/airlock/internal/termio"
 )
@@ -149,6 +150,22 @@ func (e *env) cmdStop(ctx context.Context) (int, error) {
 	return 0, nil
 }
 
+// purgeCredentials deletes the credentials volume of a project that has one of its
+// own, which `airlock rm` keeps so that recreating the sandbox does not mean logging
+// in again. The shared volume belongs to every project and is left alone.
+func (e *env) purgeCredentials(ctx context.Context, m *sandbox.Manager, cfg *config.Config) (int, error) {
+	if cfg.Credentials.Scope != "per-project" {
+		e.errf("airlock: the credentials volume is shared by every project, so --purge leaves it; airlock login --reset empties it")
+		return 0, nil
+	}
+	vol := credsVolumeName(m, cfg)
+	if err := m.B.RemoveVolume(ctx, vol); err != nil {
+		return 1, err
+	}
+	e.errf("airlock: deleted %s", vol)
+	return 0, nil
+}
+
 func (e *env) cmdRm(ctx context.Context) (int, error) {
 	l, err := e.load()
 	if err != nil {
@@ -160,11 +177,14 @@ func (e *env) cmdRm(ctx context.Context) (int, error) {
 	}
 	if _, err := m.B.Inspect(ctx, m.Name()); errors.Is(err, backend.ErrNotFound) {
 		e.errf("airlock: no sandbox for %s", l.project.Root)
-		return 0, nil
+	} else {
+		if err := m.Remove(ctx); err != nil {
+			return 1, err
+		}
+		e.errf("airlock: removed %s (your project files and login volumes are untouched)", m.Name())
 	}
-	if err := m.Remove(ctx); err != nil {
-		return 1, err
+	if e.a.purge {
+		return e.purgeCredentials(ctx, m, &l.res.Config)
 	}
-	e.errf("airlock: removed %s (your project files and login volumes are untouched)", m.Name())
 	return 0, nil
 }

@@ -66,7 +66,7 @@ at any time: the sandbox and its agents keep running, and `airlock` reattaches.
 airlock [path]               start or resume the sandbox for a project and attach
 airlock shell [path]         open a shell in it
 airlock exec [path] -- cmd   run a command in it
-airlock stop|rm [path]       stop it (tools stay) / delete it
+airlock stop|rm [path]       stop it (tools stay) / delete it (--purge: and its own logins)
 airlock wt add|open|focus|rm | airlock review <change>   worktrees and Gerrit reviews
 airlock ls                   list sandboxes
 airlock login                log in to the providers named in your config
@@ -91,7 +91,8 @@ airlock --remote <ssh-host> <command>
 - `sudo` works inside, so agents can `apt install` and use `mise` for
   Node/Python/Go/Ruby. Installed tools persist until `airlock rm`.
 - Pi logins and settings live in a Docker volume, shared by all projects
-  (`credentials.scope = "shared"`) or per project.
+  (`credentials.scope = "shared"`) or per project. `airlock rm` keeps the volume, so a
+  recreated sandbox stays logged in; `airlock rm --purge` deletes a per-project one.
 
 ## Worktrees: parallel work and Gerrit reviews
 

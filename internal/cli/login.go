@@ -152,7 +152,7 @@ func validProvider(p string) bool {
 
 func credsVolumeName(m *sandbox.Manager, cfg *config.Config) string {
 	if cfg.Credentials.Scope == "per-project" {
-		return sandbox.CredsVolumeBase + "-" + m.Project.Slug
+		return sandbox.CredsVolumeBase + "-" + m.Project.FamilySlug()
 	}
 	return sandbox.CredsVolumeBase
 }
