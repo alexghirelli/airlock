@@ -104,8 +104,12 @@ airlock wt rm review-12345                 # remove the worktree, keep the branc
   newest patchset, unless that would lose uncommitted changes or local commits: then it
   says so and prints the `git rebase --onto` to run. The remote is `gerrit` if the
   repository has one, otherwise `origin`; `git.gerrit_remote` changes it.
-- Both start the sandbox and attach. From another terminal, `--no-attach` adds the
-  workspace to the Herdr session that is already open.
+- Both start the sandbox and attach. If another terminal already has Herdr open on
+  that sandbox, they stay quiet instead: the new workspace appears there, without taking
+  its focus, and nothing attaches (`airlock wt open <name>` brings you to it). `--attach`
+  attaches anyway, `--no-attach` never does. airlock knows because the `airlock` process
+  holding that terminal leaves a small file in its cache folder, which dies with the
+  terminal; a Herdr left behind inside the sandbox by a closed window does not count.
 - **A task per worktree.** Text after the name or change is the worktree's *focus*.
   A review also gets a task of its own, written from the fetched commit: the change,
   the patchset, the subject and the author, with the rules of a review (no push, no

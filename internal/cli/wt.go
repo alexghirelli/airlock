@@ -27,6 +27,9 @@ func (e *env) cmdWt(ctx context.Context) (int, error) {
 	if e.a.shared && e.a.isolated {
 		return 2, errors.New("--shared and --isolated exclude each other")
 	}
+	if e.a.attach && e.a.noAttach {
+		return 2, errors.New("--attach and --no-attach exclude each other")
+	}
 	sub, args := "ls", []string(nil)
 	if len(e.a.rest) > 0 {
 		sub, args = e.a.rest[0], e.a.rest[1:]
@@ -57,7 +60,7 @@ func (e *env) cmdWt(ctx context.Context) (int, error) {
 			}
 		}
 		e.errf("airlock: worktree %s", path)
-		return e.openWorktree(ctx, path)
+		return e.openWorktree(ctx, path, true)
 
 	case "review":
 		change, err := worktree.ParseChange(args[0])
@@ -82,14 +85,14 @@ func (e *env) cmdWt(ctx context.Context) (int, error) {
 		if res.Note != "" {
 			e.errf("airlock: note: %s", res.Note)
 		}
-		return e.openWorktree(ctx, res.Path)
+		return e.openWorktree(ctx, res.Path, true)
 
 	case "open":
 		path, _, ok := repo.Find(args[0])
 		if !ok {
 			return 1, fmt.Errorf("no worktree %q (see airlock wt ls)", args[0])
 		}
-		return e.openWorktree(ctx, path)
+		return e.openWorktree(ctx, path, false)
 
 	case "focus":
 		path, _, ok := repo.Find(args[0])
@@ -138,8 +141,15 @@ func (e *env) isolate(cfg *config.Config, review bool) bool {
 // openWorktree starts (or resumes) the sandbox the worktree belongs to and
 // attaches to it. With --no-attach it only makes it ready, and a worktree that
 // shares the project's sandbox gets its Herdr workspace without taking the focus.
-func (e *env) openWorktree(ctx context.Context, path string) (int, error) {
+// `add` and `review` do the same on their own when a Herdr is already open in
+// another terminal: the new workspace appears there, so a second client would
+// only get in the way. --attach attaches anyway.
+func (e *env) openWorktree(ctx context.Context, path string, quietIfOpen bool) (int, error) {
 	e.a.path = path
+	if !e.a.noAttach && !e.a.attach && quietIfOpen && e.herdrOpenElsewhere() {
+		e.errf("airlock: Herdr is already open in another terminal: the workspace is added there")
+		e.a.noAttach = true
+	}
 	if !e.a.noAttach {
 		return e.cmdStart(ctx)
 	}
@@ -162,6 +172,13 @@ func (e *env) openWorktree(ctx context.Context, path string) (int, error) {
 	}
 	e.errf("airlock: %s is ready (airlock %s to attach)", m.Name(), path)
 	return 0, nil
+}
+
+// herdrOpenElsewhere reports whether another airlock process on this machine
+// has a Herdr client attached to the sandbox for e.a.path.
+func (e *env) herdrOpenElsewhere() bool {
+	l, err := e.load()
+	return err == nil && l.res.Config.Sandbox.UI == "herdr" && sandbox.AttachedElsewhere(l.project.ContainerName())
 }
 
 type wtRow struct {

@@ -55,6 +55,7 @@ Flags:
   -b, --branch <b>   wt add/review: the branch to use (default: the name / review/<change>)
   --from <ref>       wt add: where a new branch starts (default HEAD)
   --no-attach        wt add/review/open: prepare the sandbox but do not attach
+  --attach           wt add/review: attach even if a Herdr is already open in another terminal
   --shared           wt add/review: use the project's sandbox, a Herdr workspace each
   --isolated         wt add/review: give the worktree a sandbox of its own
                      (the default comes from sandbox.worktree_isolation)
@@ -92,6 +93,7 @@ type args struct {
 	accept    bool
 	ifMissing bool
 	noAttach  bool
+	attach    bool
 	shared    bool
 	isolated  bool
 	branch    string
@@ -143,6 +145,8 @@ func parseArgs(argv []string) (*args, error) {
 				a.ifMissing = true
 			case "--no-attach":
 				a.noAttach = true
+			case "--attach":
+				a.attach = true
 			case "--shared":
 				a.shared = true
 			case "--isolated":

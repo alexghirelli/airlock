@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // at runs a script in the sandbox that serves the given directory (a worktree
@@ -260,4 +261,38 @@ git worktree prune; git worktree list | wc -l
 		t.Error("the review branch was deleted")
 	}
 	p.wt("rm", "feat")
+}
+
+// With a Herdr already open in another terminal, `airlock review` only adds the
+// workspace there: no second client, no change of focus. Without one it attaches.
+func TestReviewIsQuietWhenHerdrIsAlreadyOpen(t *testing.T) {
+	p := newProject(t, "wtquiet", "")
+	fakeGerrit(p, "a change", "555")
+	p.cleanupWorktrees("review-555", "later")
+
+	first := p.attach() // the terminal the user already has open
+	first.waitFor(t, "spaces", 5*time.Minute)
+
+	// No --no-attach: it must decide by itself not to attach (a second client
+	// would need a terminal, which this process does not have).
+	out := p.wt("review", "555")
+	if !strings.Contains(out, "already open in another terminal") {
+		t.Errorf("review did not go quiet:\n%s", out)
+	}
+	ws := p.mustSh(`herdr workspace list`)
+	if !strings.Contains(ws, `"label":"review-555"`) {
+		t.Errorf("the workspace is not in the open session:\n%s", ws)
+	}
+	// The user's view stays where it was: the project's own workspace keeps the focus.
+	focused := p.mustSh(`herdr workspace list | jq -r '.result.workspaces[] | select(.focused) | .label'`)
+	if strings.TrimSpace(focused) != "wtquiet" {
+		t.Errorf("focus moved to %q", focused)
+	}
+	// Close that terminal: now there is no client, so the next command attaches.
+	first.closeTerminal() // airlock dies with its terminal, so its lease is dead
+	second := p.attach("wt", "add", "later")
+	second.waitFor(t, "spaces", 2*time.Minute)
+	if strings.Contains(second.output(), "already open") {
+		t.Errorf("went quiet although no Herdr was open:\n%.1500s", second.output())
+	}
 }
