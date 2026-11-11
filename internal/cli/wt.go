@@ -15,7 +15,7 @@ import (
 )
 
 const wtUsage = `usage: airlock wt add <name> [focus...] [-b branch] [--from ref]
-       airlock review <change|url> [focus...]
+       airlock review <change|pr:N|mr:N|bb:N|url> [focus...]
        airlock wt open <name> | focus <name> [text] | ls | rm <name> [--force]
        (add, review: --shared or --isolated, --no-attach)`
 
@@ -39,7 +39,7 @@ func (e *env) cmdWt(ctx context.Context) (int, error) {
 		return 2, err
 	}
 	cfg := &l.res.Config
-	repo := &worktree.Repo{Root: l.project.RepoRoot(), Dir: cfg.Sandbox.WorktreesDir, GerritRemote: cfg.Git.GerritRemote}
+	repo := &worktree.Repo{Root: l.project.RepoRoot(), Dir: cfg.Sandbox.WorktreesDir, ReviewRemote: cfg.Git.ReviewRemote, GerritRemote: cfg.Git.GerritRemote}
 	if sub != "ls" && sub != "list" && repo.Dir == "" {
 		return 2, errors.New("worktrees are disabled (sandbox.worktrees_dir is empty)")
 	}
@@ -67,7 +67,7 @@ func (e *env) cmdWt(ctx context.Context) (int, error) {
 		if err != nil {
 			return 2, err
 		}
-		e.errf("airlock: fetching change %d from Gerrit", change.Number)
+		e.errf("airlock: fetching %s", strings.TrimSpace(args[0]))
 		res, err := repo.Review(change, "", e.a.branch, e.isolate(cfg, true))
 		if err != nil {
 			return 1, err
@@ -81,7 +81,7 @@ func (e *env) cmdWt(ctx context.Context) (int, error) {
 		if res.Created {
 			verb = "created"
 		}
-		e.errf("airlock: %s %s: patchset %d on branch %s", verb, res.Path, res.Patchset, res.Branch)
+		e.errf("airlock: %s %s: %s on branch %s", verb, res.Path, res.Change.What(), res.Branch)
 		if res.Note != "" {
 			e.errf("airlock: note: %s", res.Note)
 		}

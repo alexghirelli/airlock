@@ -11,37 +11,86 @@ import (
 )
 
 func TestParseChange(t *testing.T) {
+	g := func(n, ps int) Change { return Change{Forge: Gerrit, Number: n, Patchset: ps} }
 	good := map[string]Change{
-		"12345":   {12345, 0},
-		"12345/3": {12345, 3},
-		"12345,3": {12345, 3},
-		"https://gerrit.example.org/r/c/mediawiki/core/+/12345":       {12345, 0},
-		"https://gerrit.example.org/r/c/mediawiki/core/+/12345/7":     {12345, 7},
-		"https://gerrit.example.org/r/c/mediawiki/core/+/12345/7?x=y": {12345, 7},
-		"https://gerrit.example.org/#/c/12345/2":                      {12345, 2},
-		"https://gerrit.example.org/#/c/mediawiki/core/+/12345/2":     {12345, 2},
-		"refs/changes/45/12345/9":                                     {12345, 9},
-		" 7 ":                                                         {7, 0},
+		"12345":     {Number: 12345},
+		"12345/3":   g(12345, 3),
+		"12345,3":   g(12345, 3),
+		" 7 ":       {Number: 7},
+		"gerrit:77": {Forge: Gerrit, Number: 77},
+		"pr:12":     {Forge: GitHub, Number: 12},
+		"mr:45":     {Forge: GitLab, Number: 45},
+		"bb:8":      {Forge: Bitbucket, Number: 8},
+
+		"refs/changes/45/12345/9":     g(12345, 9),
+		"refs/pull/12/head":           {Forge: GitHub, Number: 12},
+		"refs/pull-requests/8/from":   {Forge: Bitbucket, Number: 8},
+		"refs/merge-requests/45/head": {Forge: GitLab, Number: 45},
+
+		"https://gerrit.example.org/r/c/mediawiki/core/+/12345":       {Forge: Gerrit, Number: 12345, RepoHost: "gerrit.example.org", RepoPath: "mediawiki/core"},
+		"https://gerrit.example.org/r/c/mediawiki/core/+/12345/7":     {Forge: Gerrit, Number: 12345, Patchset: 7, RepoHost: "gerrit.example.org", RepoPath: "mediawiki/core"},
+		"https://gerrit.example.org/r/c/mediawiki/core/+/12345/7?x=y": {Forge: Gerrit, Number: 12345, Patchset: 7, RepoHost: "gerrit.example.org", RepoPath: "mediawiki/core"},
+		"https://gerrit.example.org/#/c/12345/2":                      {Forge: Gerrit, Number: 12345, Patchset: 2, RepoHost: "gerrit.example.org"},
+		"https://gerrit.example.org/#/c/mediawiki/core/+/12345/2":     {Forge: Gerrit, Number: 12345, Patchset: 2, RepoHost: "gerrit.example.org", RepoPath: "mediawiki/core"},
+
+		"https://github.com/acme/widgets/pull/321":                                      {Forge: GitHub, Number: 321, RepoHost: "github.com", RepoPath: "acme/widgets"},
+		"https://github.com/acme/widgets/pull/321/files#diff-abc":                       {Forge: GitHub, Number: 321, RepoHost: "github.com", RepoPath: "acme/widgets"},
+		"https://git.example.org/team/sub/proj/-/merge_requests/9":                      {Forge: GitLab, Number: 9, RepoHost: "git.example.org", RepoPath: "team/sub/proj"},
+		"https://gitlab.com/acme/widgets/-/merge_requests/9/diffs":                      {Forge: GitLab, Number: 9, RepoHost: "gitlab.com", RepoPath: "acme/widgets"},
+		"https://bb.example.org/projects/PROJ/repos/widgets/pull-requests/8/overview":   {Forge: Bitbucket, Number: 8, RepoHost: "bb.example.org", RepoPath: "proj/widgets"},
+		"https://git.example.org/bitbucket/projects/KEY/repos/api/pull-requests/3/diff": {Forge: Bitbucket, Number: 3, RepoHost: "git.example.org", RepoPath: "key/api"},
+		"https://gitlab.example.org/acme/widgets/merge_requests/14":                     {Forge: GitLab, Number: 14, RepoHost: "gitlab.example.org", RepoPath: "acme/widgets"},
 	}
 	for in, want := range good {
 		got, err := ParseChange(in)
 		if err != nil || got != want {
-			t.Errorf("ParseChange(%q) = %v, %v; want %v", in, got, err, want)
+			t.Errorf("ParseChange(%q) = %+v, %v; want %+v", in, got, err, want)
 		}
 	}
-	for _, in := range []string{"", "abc", "0", "https://example.org/", "12345/x", "-3"} {
+	for _, in := range []string{"https://bitbucket.org/acme/widgets/pull-requests/8", "bb:8/2", "", "abc", "0", "https://example.org/", "https://github.com/acme/widgets", "12345/x", "-3", "pr:12/3", "mr:4,2", "ftp:9"} {
 		if c, err := ParseChange(in); err == nil {
-			t.Errorf("ParseChange(%q) = %v, want an error", in, c)
+			t.Errorf("ParseChange(%q) = %+v, want an error", in, c)
 		}
 	}
 }
 
-func TestChangeRef(t *testing.T) {
-	if got := (Change{12345, 3}).Ref(); got != "refs/changes/45/12345/3" {
-		t.Errorf("ref = %q", got)
+func TestChangeRefsAndNames(t *testing.T) {
+	cases := []struct {
+		c                          Change
+		ref, fetched, name, branch string
+	}{
+		{Change{Forge: Gerrit, Number: 12345, Patchset: 3}, "refs/changes/45/12345/3", "refs/airlock/changes/12345/3", "review-12345", "review/12345"},
+		{Change{Forge: Gerrit, Number: 7, Patchset: 1}, "refs/changes/07/7/1", "refs/airlock/changes/7/1", "review-7", "review/7"},
+		{Change{Forge: GitHub, Number: 12}, "refs/pull/12/head", "refs/airlock/pull/12", "review-pr-12", "review/pr-12"},
+		{Change{Forge: GitLab, Number: 45}, "refs/merge-requests/45/head", "refs/airlock/merge-requests/45", "review-mr-45", "review/mr-45"},
+		{Change{Forge: Bitbucket, Number: 8}, "refs/pull-requests/8/from", "refs/airlock/pull-requests/8", "review-bb-8", "review/bb-8"},
 	}
-	if got := (Change{7, 1}).Ref(); got != "refs/changes/07/7/1" {
-		t.Errorf("ref = %q", got)
+	for _, c := range cases {
+		if c.c.serverRef() != c.ref || c.c.fetched() != c.fetched || c.c.Name() != c.name || c.c.Branch() != c.branch {
+			t.Errorf("%+v: ref %s fetched %s name %s branch %s", c.c, c.c.serverRef(), c.c.fetched(), c.c.Name(), c.c.Branch())
+		}
+	}
+}
+
+func TestSplitRemoteURL(t *testing.T) {
+	cases := map[string][2]string{
+		"https://github.com/acme/widgets.git":                 {"github.com", "acme/widgets"},
+		"git@github.com:acme/widgets.git":                     {"github.com", "acme/widgets"},
+		"ssh://git@gitlab.example.org:2222/team/sub/proj.git": {"gitlab.example.org", "team/sub/proj"},
+		"ssh://me@gerrit.example.org:29418/mediawiki/core":    {"gerrit.example.org", "mediawiki/core"},
+		"https://www.GitHub.com/acme/widgets/":                {"github.com", "acme/widgets"},
+		"https://gerrit.example.org/r/mediawiki/core":         {"gerrit.example.org", "r/mediawiki/core"},
+	}
+	for in, want := range cases {
+		if h, p := splitRemoteURL(in); h != want[0] || p != want[1] {
+			t.Errorf("splitRemoteURL(%q) = %q, %q; want %q, %q", in, h, p, want[0], want[1])
+		}
+	}
+	if !pathMatches("PROJ/widgets", "proj/widgets") || !pathMatches("scm/proj/widgets", "proj/widgets") {
+		t.Error("project keys must match whatever their case")
+	}
+	if !pathMatches("r/mediawiki/core", "mediawiki/core") || pathMatches("r/mediawiki/core-extra", "mediawiki/core") || pathMatches("x", "") {
+		t.Error("pathMatches")
 	}
 }
 
@@ -116,7 +165,19 @@ func (f *fixture) patchset(t *testing.T, change, ps int, content string) string 
 	clone := filepath.Join(tmp, "c")
 	git(t, tmp, "clone", "-q", f.server, clone)
 	sha := commit(t, clone, "change.txt", content)
-	git(t, clone, "push", "-q", "origin", "HEAD:"+Change{change, ps}.Ref())
+	git(t, clone, "push", "-q", "origin", "HEAD:"+Change{Forge: Gerrit, Number: change, Patchset: ps}.serverRef())
+	return sha
+}
+
+// publish puts a commit on top of main on the server under any ref, as a forge
+// does for pull and merge requests.
+func (f *fixture) publish(t *testing.T, ref, content string) string {
+	t.Helper()
+	tmp := t.TempDir()
+	clone := filepath.Join(tmp, "c")
+	git(t, tmp, "clone", "-q", f.server, clone)
+	sha := commit(t, clone, "change.txt", content)
+	git(t, clone, "push", "-q", "-f", "origin", "HEAD:"+ref)
 	return sha
 }
 
@@ -178,7 +239,7 @@ func TestReviewFetchesLatestPatchsetOnALocalBranch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Patchset != 2 || !res.Created || res.Branch != "review/12345" {
+	if res.Change.Patchset != 2 || !res.Created || res.Branch != "review/12345" {
 		t.Errorf("result = %+v", res)
 	}
 	if got := git(t, res.Path, "rev-parse", "HEAD"); got != sha2 {
@@ -472,6 +533,156 @@ func TestReviewNamesTheCommitAndWarnsWhenTheBranchIsNotAtIt(t *testing.T) {
 	// The commit the brief names is really the patchset, and is available to the agent.
 	if git(t, res.Path, "log", "-1", "--format=%s", sha[:12]) == "" {
 		t.Error("the named commit is not in the repository")
+	}
+}
+
+func TestReviewResolvesWhichKindOfChangeANumberIs(t *testing.T) {
+	f := newFixture(t)
+	pr := f.publish(t, "refs/pull/31/head", "a pull request\n")
+	mr := f.publish(t, "refs/merge-requests/32/head", "a merge request\n")
+	bb := f.publish(t, "refs/pull-requests/34/from", "a Bitbucket pull request\n")
+	f.patchset(t, 33, 1, "gerrit 1\n")
+	g2 := f.patchset(t, 33, 2, "gerrit 2\n")
+
+	for _, c := range []struct {
+		in     Change
+		forge  Forge
+		branch string
+		sha    string
+	}{
+		{Change{Number: 31}, GitHub, "review/pr-31", pr},
+		{Change{Number: 32}, GitLab, "review/mr-32", mr},
+		{Change{Number: 34}, Bitbucket, "review/bb-34", bb},
+		{Change{Number: 33}, Gerrit, "review/33", g2},
+	} {
+		res, err := f.repo.Review(c.in, "", "", false)
+		if err != nil {
+			t.Fatalf("%+v: %v", c.in, err)
+		}
+		if res.Change.Forge != c.forge || res.Branch != c.branch {
+			t.Errorf("%+v resolved to %s on %s", c.in, res.Change.Forge, res.Branch)
+		}
+		if got := git(t, res.Path, "rev-parse", "HEAD"); got != c.sha {
+			t.Errorf("%s: HEAD = %s, want %s", c.branch, got, c.sha)
+		}
+		brief, _ := os.ReadFile(filepath.Join(AdminDir(res.Path), briefFile))
+		if !strings.Contains(string(brief), c.sha[:12]) || !strings.Contains(string(brief), "git rev-parse HEAD") {
+			t.Errorf("%s: brief does not name the commit:\n%s", c.branch, brief)
+		}
+	}
+	// Pull and merge requests are told apart from Gerrit changes in what the agent reads.
+	prBrief, _ := os.ReadFile(filepath.Join(AdminDir(filepath.Join(f.main, ".worktrees", "review-pr-31")), briefFile))
+	for _, want := range []string{"pull request #31", "merge-base", "GitHub"} {
+		if !strings.Contains(string(prBrief), want) {
+			t.Errorf("pull request brief lacks %q:\n%s", want, prBrief)
+		}
+	}
+	mrBrief, _ := os.ReadFile(filepath.Join(AdminDir(filepath.Join(f.main, ".worktrees", "review-mr-32")), briefFile))
+	if !strings.Contains(string(mrBrief), "merge request !32") || !strings.Contains(string(mrBrief), "GitLab") {
+		t.Errorf("merge request brief:\n%s", mrBrief)
+	}
+}
+
+func TestReviewAskForTheKindWhenANumberIsAmbiguous(t *testing.T) {
+	f := newFixture(t)
+	f.publish(t, "refs/pull/9/head", "pr\n")
+	f.publish(t, "refs/merge-requests/9/head", "mr\n")
+	f.publish(t, "refs/pull-requests/9/from", "bb\n")
+	f.patchset(t, 9, 1, "gerrit\n")
+
+	_, err := f.repo.Review(Change{Number: 9}, "", "", false)
+	if err == nil || !strings.Contains(err.Error(), "pr:9") || !strings.Contains(err.Error(), "gerrit") {
+		t.Fatalf("an ambiguous number must ask for the kind: %v", err)
+	}
+	for forge, branch := range map[Forge]string{GitHub: "review/pr-9", GitLab: "review/mr-9", Bitbucket: "review/bb-9", Gerrit: "review/9"} {
+		res, err := f.repo.Review(Change{Forge: forge, Number: 9}, "", "", false)
+		if err != nil || res.Branch != branch {
+			t.Errorf("%s: %+v, %v", forge, res, err)
+		}
+	}
+	if _, err := f.repo.Review(Change{Forge: GitHub, Number: 9, Patchset: 2}, "", "", false); err == nil {
+		// a patchset only exists for Gerrit; the resolver must not quietly ignore it
+		t.Error("a patchset on a pull request was accepted")
+	}
+}
+
+func TestPullRequestFollowsItsHeadWithoutLosingWork(t *testing.T) {
+	f := newFixture(t)
+	f.publish(t, "refs/pull/50/head", "v1\n")
+	res, err := f.repo.Review(Change{Forge: GitHub, Number: 50}, "", "", false)
+	if err != nil || !res.Created {
+		t.Fatalf("%+v, %v", res, err)
+	}
+	head2 := f.publish(t, "refs/pull/50/head", "v2\n") // the author pushed again (force)
+	res, err = f.repo.Review(Change{Number: 50}, "", "", false)
+	if err != nil || res.Note != "" || res.Created {
+		t.Fatalf("update: %+v, %v", res, err)
+	}
+	if got := git(t, res.Path, "rev-parse", "HEAD"); got != head2 {
+		t.Errorf("HEAD = %s, want the new head %s", got, head2)
+	}
+	mine := commit(t, res.Path, "change.txt", "my fix\n")
+	f.publish(t, "refs/pull/50/head", "v3\n")
+	res, err = f.repo.Review(Change{Number: 50}, "", "", false)
+	if err != nil || !strings.Contains(res.Note, "local commits") {
+		t.Fatalf("local commits must be kept: %+v, %v", res, err)
+	}
+	if got := git(t, res.Path, "rev-parse", "HEAD"); got != mine {
+		t.Errorf("local commit lost: %s", got)
+	}
+}
+
+func TestReviewUsesTheRemoteAURLPointsAt(t *testing.T) {
+	tmp, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	mkServer := func(owner string) string {
+		dir := filepath.Join(tmp, owner)
+		os.MkdirAll(dir, 0o755)
+		server := filepath.Join(dir, "widgets.git")
+		git(t, tmp, "init", "-q", "--bare", "-b", "main", server)
+		return server
+	}
+	mine, upstream := mkServer("me"), mkServer("acme")
+	main := filepath.Join(tmp, "work")
+	git(t, tmp, "init", "-q", "-b", "main", main)
+	commit(t, main, "a.txt", "one\n")
+	git(t, main, "remote", "add", "origin", mine)
+	git(t, main, "remote", "add", "upstream", upstream)
+	git(t, main, "push", "-q", "origin", "main")
+	git(t, main, "push", "-q", "upstream", "main")
+	// The pull request exists only upstream, as is usual with a fork.
+	clone := filepath.Join(tmp, "c")
+	git(t, tmp, "clone", "-q", upstream, clone)
+	head := commit(t, clone, "change.txt", "pr\n")
+	git(t, clone, "push", "-q", "origin", "HEAD:refs/pull/5/head")
+
+	repo := &Repo{Root: main, Dir: ".worktrees"}
+	// A bare number: origin does not have it, upstream does.
+	res, err := repo.Review(Change{Number: 5}, "", "", false)
+	if err != nil || git(t, res.Path, "rev-parse", "HEAD") != head {
+		t.Fatalf("bare number: %+v, %v", res, err)
+	}
+	// A URL for the upstream repository goes straight to the remote that points at it
+	// (matched by path: the host of a local path is empty, as an ssh alias would differ).
+	if _, err := repo.Remove("review-pr-5", true); err != nil {
+		t.Fatal(err)
+	}
+	c, _ := ParseChange("https://github.com/acme/widgets/pull/5")
+	res, err = repo.Review(c, "", "", false)
+	if err != nil || git(t, res.Path, "rev-parse", "HEAD") != head {
+		t.Fatalf("URL: %+v, %v", res, err)
+	}
+	// A URL for a repository none of the remotes is: refuse, saying what to do.
+	c, _ = ParseChange("https://github.com/other/thing/pull/5")
+	if _, err := repo.Review(c, "", "", false); err == nil || !strings.Contains(err.Error(), "no remote") {
+		t.Errorf("unknown repository: %v", err)
+	}
+	// An explicit remote wins over everything.
+	repo.ReviewRemote = "origin"
+	if _, err := repo.Review(Change{Forge: GitHub, Number: 5}, "", "other", false); err == nil || !strings.Contains(err.Error(), "origin") {
+		t.Errorf("explicit remote ignored: %v", err)
 	}
 }
 

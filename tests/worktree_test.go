@@ -296,3 +296,42 @@ func TestReviewIsQuietWhenHerdrIsAlreadyOpen(t *testing.T) {
 		t.Errorf("went quiet although no Herdr was open:\n%.1500s", second.output())
 	}
 }
+
+// A pull request is reviewed the same way as a Gerrit change: the forge is found
+// out from the remote, the branch is local, and the agent gets the task.
+func TestReviewAPullRequestFromTheCLI(t *testing.T) {
+	p := newProject(t, "wtpr", "")
+	p.git("commit", "--allow-empty", "-qm", "init")
+	server := filepath.Join(filepath.Dir(p.Dir), "forge.git")
+	p.git("init", "-q", "--bare", "-b", "main", server)
+	p.git("remote", "add", "origin", server)
+	p.git("push", "-q", "origin", "main")
+	head := p.git("commit-tree", "-p", "HEAD", "-m", "Fix the widget", "HEAD^{tree}")
+	p.git("push", "-q", "origin", head+":refs/pull/21/head")
+	p.cleanupWorktrees("review-pr-21")
+
+	out := p.wt("review", "21", "--no-attach")
+	if !strings.Contains(out, "pull request #21") {
+		t.Errorf("output does not say what was fetched:\n%s", out)
+	}
+	review := filepath.Join(p.Dir, ".worktrees", "review-pr-21")
+	if b := p.git("-C", review, "branch", "--show-current"); b != "review/pr-21" {
+		t.Errorf("branch = %q", b)
+	}
+	if h := p.git("-C", review, "rev-parse", "HEAD"); h != head {
+		t.Errorf("HEAD = %s, want %s", h, head)
+	}
+	brief := p.mustAt(review, `cat "$(git rev-parse --absolute-git-dir)/airlock-review.md"`)
+	for _, want := range []string{"pull request #21", "Fix the widget", head[:12], "GitHub"} {
+		if !strings.Contains(brief, want) {
+			t.Errorf("task lacks %q:\n%s", want, brief)
+		}
+	}
+	// Told once more, with a number that is also a different kind, it asks.
+	p.git("push", "-q", "origin", head+":refs/merge-requests/21/head")
+	ctx, cancel := ctxMinutes(2)
+	defer cancel()
+	if _, errOut, code := p.run(ctx, nil, "review", "21", "--no-attach"); code == 0 || !strings.Contains(errOut, "pr:21") {
+		t.Errorf("an ambiguous number was not refused with a hint (exit %d):\n%s", code, errOut)
+	}
+}

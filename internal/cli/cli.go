@@ -29,8 +29,9 @@ Usage:
   airlock restart [path]       stop and start again, to apply a changed config
   airlock rm [path]            delete the sandbox
   airlock wt add <name> [focus...]   a worktree on a new or existing branch (-b, --from)
-  airlock review <change> [focus...] a Gerrit patchset on a local branch review/<change>
-                               (12345, 12345/3 or the change URL); same as wt review
+  airlock review <what> [focus...]  a Gerrit change, GitHub/GitLab/Bitbucket pull or merge
+                               request on a local branch review/<N>, in a worktree. <what>:
+                               its URL, or 12345 | 12345/3 | pr:12 | mr:12 | bb:12; same as wt review
   airlock wt open <name>       come back to a worktree
   airlock wt focus <name> [text]  show / set / clear (text "") what its agent concentrates on
   airlock wt [ls] | rm <name>  list worktrees / remove one (--force with changes)
