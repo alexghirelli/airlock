@@ -101,6 +101,17 @@ func TestWorktreeIsolationDefaultsAndFlags(t *testing.T) {
 	}
 }
 
+func TestParseArgsAttachFlags(t *testing.T) {
+	a, err := parseArgs([]string{"review", "12345", "--attach"})
+	if err != nil || !a.attach || a.noAttach {
+		t.Errorf("--attach: %+v, %v", a, err)
+	}
+	a, err = parseArgs([]string{"review", "12345", "--no-attach"})
+	if err != nil || a.attach || !a.noAttach {
+		t.Errorf("--no-attach: %+v, %v", a, err)
+	}
+}
+
 func TestLoginTargets(t *testing.T) {
 	c := config.Defaults()
 	if got := loginTargets(&c); len(got) != 0 {
