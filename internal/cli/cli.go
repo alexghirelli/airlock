@@ -35,6 +35,7 @@ Usage:
   airlock wt open <name>       come back to a worktree
   airlock wt focus <name> [text]  show / set / clear (text "") what its agent concentrates on
   airlock wt [ls] | rm <name>  list worktrees / remove one (--force with changes)
+  airlock rm --purge           also delete this project's own credentials volume (credentials.scope = per-project)
   airlock ls                   list sandboxes
   airlock login [--reset]      log in to the configured providers
   airlock build | update       build the image / rebuild with the latest pinned versions
@@ -93,6 +94,7 @@ type args struct {
 	cfgFile   string
 	reset     bool
 	force     bool
+	purge     bool
 	accept    bool
 	ifMissing bool
 	noAttach  bool
@@ -142,6 +144,8 @@ func parseArgs(argv []string) (*args, error) {
 				a.reset = true
 			case "--force":
 				a.force = true
+			case "--purge":
+				a.purge = true
 			case "--accept":
 				a.accept = true
 			case "--if-missing":
