@@ -2,7 +2,8 @@ name: release
 
 # Push an annotated tag such as v0.1.0 to publish a release. The tag's message
 # becomes the release notes, so write what changed for users:
-#   git tag -a v0.1.0 -F notes.md   (first line is a title, then the details)
+#   git tag -a v0.1.0 -F notes.md   (a summary line, then the details)
+# The release itself is named after the version only.
 on:
   push:
     tags: ['v*']
@@ -34,15 +35,12 @@ jobs:
           fi
           git tag -l --format='%(contents)' "$GITHUB_REF_NAME" | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' > notes.md
           if [ "$(grep -c . notes.md)" -lt 2 ]; then
-            echo "::error::the message of tag $GITHUB_REF_NAME needs a title and at least one line saying what changed"
+            echo "::error::the message of tag $GITHUB_REF_NAME needs a summary line and at least one line saying what changed"
             exit 1
           fi
-          # The first line is the title ("airlock vX: <line>"); the rest is the body.
-          printf 'airlock %s: %s' "$GITHUB_REF_NAME" "$(sed -n 1p notes.md)" > title.txt
-          sed -n '2,$p' notes.md | sed -e '/./,$!d' > body.md
           prev="$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null || true)"
           {
-            cat body.md
+            cat notes.md
             printf '\n---\n\nInstall or upgrade: `curl -fsSL https://raw.githubusercontent.com/%s/main/install.sh | sh` (checksums in `SHA256SUMS`). After upgrading, run `airlock build`, then `airlock start --recreate` if the notes say the image or the sandbox settings changed.\n' "$GITHUB_REPOSITORY"
             if [ -n "$prev" ]; then
               printf '\nFull changelog: https://github.com/%s/compare/%s...%s\n' "$GITHUB_REPOSITORY" "$prev" "$GITHUB_REF_NAME"
@@ -53,6 +51,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "$GITHUB_REF_NAME" dist/* \
-            --title "$(cat title.txt)" \
+            --title "$GITHUB_REF_NAME" \
             --verify-tag \
             --notes-file release.md

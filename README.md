@@ -264,12 +264,13 @@ build; the image is about 1.3 GB (1.8 GB with Claude Code).
 Releases come from annotated tags, and the tag message is the release text:
 
 ```sh
-git tag -a v0.2.0 -F notes.md   # first line: short title; then what changed, for users
+git tag -a v0.2.0 -F notes.md   # a summary line, then what changed, for users
 git push origin v0.2.0
 ```
 
-The `release` workflow refuses lightweight tags and messages without a title and
-at least one line of detail. The release is named `airlock v0.2.0: <title>`. It builds the archives, publishes them with
+The `release` workflow refuses lightweight tags and messages without a summary
+line and at least one line of detail. The release is named after the version only
+(`v0.2.0`); the tag message is its text. It builds the archives, publishes them with
 `SHA256SUMS`, and appends the install line and a link to the full changelog.
 
 ## Licence
