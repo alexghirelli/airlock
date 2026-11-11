@@ -65,6 +65,10 @@ type Git struct {
 	// GerritRemote is the remote `airlock wt review` fetches refs/changes from.
 	// Empty means "gerrit" if the repository has such a remote, else "origin".
 	GerritRemote string `toml:"gerrit_remote"`
+	// ReviewRemote is the remote `airlock review` fetches from, for Gerrit
+	// changes, pull requests and merge requests alike. Empty means: the remote a
+	// change URL points at, otherwise "gerrit", "origin" and "upstream" in turn.
+	ReviewRemote string `toml:"review_remote"`
 }
 
 type Pi struct {
