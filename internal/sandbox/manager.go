@@ -38,6 +38,9 @@ type Manager struct {
 	// Recreate recreates the sandbox when its fixed settings changed, instead
 	// of asking.
 	Recreate bool
+	// NoFocus keeps Herdr's focus where it is when a worktree's workspace is
+	// created (the caller is not going to attach).
+	NoFocus bool
 	// Confirm asks the user a yes/no question. Nil means "no".
 	Confirm func(prompt string) bool
 	// ReadyTimeout bounds the wait for init (first starts install packages).
@@ -199,14 +202,14 @@ func lastLines(s string, n int) string {
 	return strings.Join(lines, "\n")
 }
 
-// projectDockerfile returns the project Dockerfile path relative to the project
-// root, or "" if there is none.
+// projectDockerfile returns the project Dockerfile path relative to the
+// repository root, or "" if there is none.
 func (m *Manager) projectDockerfile() string {
 	rel := m.Config.Config.Image.Dockerfile
 	if rel == "" {
 		rel = ".airlock/Dockerfile"
 	}
-	if st, err := os.Stat(filepath.Join(m.Project.Root, filepath.FromSlash(rel))); err == nil && st.Mode().IsRegular() {
+	if st, err := os.Stat(filepath.Join(m.Project.RepoRoot(), filepath.FromSlash(rel))); err == nil && st.Mode().IsRegular() {
 		return rel
 	}
 	return ""
@@ -216,13 +219,14 @@ func (m *Manager) projectDockerfile() string {
 // files are skipped, so the project cannot make the build read host files
 // outside its own folder.
 func (m *Manager) projectBuildContext(rel string) (io.Reader, string, error) {
-	abs := filepath.Join(m.Project.Root, filepath.FromSlash(rel))
+	root := m.Project.RepoRoot() // a worktree builds the main repository's image, not its own patch's
+	abs := filepath.Join(root, filepath.FromSlash(rel))
 	dir := filepath.Dir(abs)
 	real, err := filepath.EvalSymlinks(abs)
 	if err != nil {
 		return nil, "", err
 	}
-	if r, err := filepath.Rel(m.Project.Root, real); err != nil || strings.HasPrefix(r, "..") {
+	if r, err := filepath.Rel(root, real); err != nil || strings.HasPrefix(r, "..") {
 		return nil, "", fmt.Errorf("%s resolves outside the project", rel)
 	}
 	var buf bytes.Buffer
@@ -503,7 +507,7 @@ func sessionCmd(cmd []string) []string { return append([]string{SessionWrapper},
 // Attach opens an interactive session in the sandbox.
 func (m *Manager) Attach(ctx context.Context, cmd []string) (int, error) {
 	return m.B.Attach(ctx, m.Name(), backend.ExecOpts{
-		Cmd: sessionCmd(cmd), User: "root", WorkDir: m.Project.Path, Env: SessionEnv(m.Host.Getenv),
+		Cmd: sessionCmd(cmd), User: "root", WorkDir: m.Project.WorkDir(), Env: SessionEnv(m.Host.Getenv),
 	})
 }
 
@@ -513,6 +517,12 @@ func (m *Manager) PrepareHerdr(ctx context.Context, team bool) error {
 	cmd := []string{"airlock-herdr-up"}
 	if team {
 		cmd = append(cmd, "--team")
+	}
+	if m.Project.Cwd != "" { // a worktree that shares this sandbox gets a workspace of its own
+		cmd = append(cmd, "--workspace", m.Project.WorkDir())
+		if m.NoFocus {
+			cmd = append(cmd, "--no-focus")
+		}
 	}
 	var out bytes.Buffer
 	code, err := m.Exec(ctx, cmd, nil, &out, &out)
@@ -528,7 +538,7 @@ func (m *Manager) PrepareHerdr(ctx context.Context, team bool) error {
 // Exec runs a non-interactive command in the sandbox.
 func (m *Manager) Exec(ctx context.Context, cmd []string, stdin io.Reader, stdout, stderr io.Writer) (int, error) {
 	return m.B.Exec(ctx, m.Name(), backend.ExecOpts{
-		Cmd: sessionCmd(cmd), User: "root", WorkDir: m.Project.Path, Env: SessionEnv(m.Host.Getenv),
+		Cmd: sessionCmd(cmd), User: "root", WorkDir: m.Project.WorkDir(), Env: SessionEnv(m.Host.Getenv),
 		Stdin: stdin, Stdout: stdout, Stderr: stderr,
 	})
 }

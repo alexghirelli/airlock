@@ -142,10 +142,12 @@ func hasRuntime(info *backend.EngineInfo, name string) bool {
 func (e *env) doctorProject(ctx context.Context, r *doctor.Report, l *loaded, b backend.Backend) {
 	p, cfg := l.project, &l.res.Config
 	r.Add("project", doctor.OK, p.Root+" -> container "+p.ContainerName(), "")
-	if st, err := os.Stat(filepath.Join(p.Root, ".git")); err != nil {
+	if p.IsWorktree() {
+		r.Add("git", doctor.OK, "linked worktree of "+p.Main+": only this worktree and the shared git directory are mounted; hooks and config are read-only", "")
+	} else if st, err := os.Stat(filepath.Join(p.Root, ".git")); err != nil {
 		r.Add("git", doctor.Warn, "not a git repository: .git/hooks and .git/config protection and worktrees are unavailable", "git init")
 	} else if !st.IsDir() {
-		r.Add("git", doctor.Warn, ".git is a file (submodule or linked worktree): its git directory is outside the project and not mounted, so git may not work inside the sandbox", "run airlock from the main repository")
+		r.Add("git", doctor.Warn, ".git is a file (a submodule): its git directory is outside the project and not mounted, so git may not work inside the sandbox", "run airlock from the superproject")
 	} else {
 		r.Add("git", doctor.OK, "repository found; hooks and config are mounted read-only", "")
 	}
@@ -167,7 +169,7 @@ func (e *env) doctorProject(ctx context.Context, r *doctor.Report, l *loaded, b 
 	}
 
 	// Credentials.
-	vol := credsVolumeNameFor(p.Slug, cfg.Credentials.Scope)
+	vol := credsVolumeNameFor(p.FamilySlug(), cfg.Credentials.Scope)
 	if cfg.Credentials.Scope == "shared" {
 		r.Add("credentials", doctor.OK, "scope shared: volume "+vol+"; every sandbox on this machine can read the provider logins (per-project isolates them)", "")
 	} else {

@@ -50,6 +50,7 @@ func (c *Config) Validate() error {
 	add(oneOf("network.mode", c.Network.Mode, NetworkModes))
 	add(oneOf("credentials.scope", c.Credentials.Scope, CredScopes))
 	add(oneOf("git.mode", c.Git.Mode, GitModes))
+	add(oneOf("sandbox.worktree_isolation", c.Sandbox.WorktreeIsolation, WorktreeIsolations))
 	add(oneOf("extras.claude_code", c.Extras.ClaudeCode, ClaudeModes))
 
 	if !memoryRe.MatchString(c.Sandbox.Memory) {

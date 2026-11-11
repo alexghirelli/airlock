@@ -42,6 +42,10 @@ type Sandbox struct {
 	CPUs         float64 `toml:"cpus"`
 	Pids         int64   `toml:"pids"`
 	WorktreesDir string  `toml:"worktrees_dir"` // "" disables worktree support
+	// WorktreeIsolation decides which worktrees made by `airlock wt` get a
+	// sandbox of their own: none (all share the project's, one Herdr workspace
+	// each), reviews (only `wt review`) or all.
+	WorktreeIsolation string `toml:"worktree_isolation"`
 }
 
 type Network struct {
@@ -156,7 +160,7 @@ func Defaults() Config {
 			Memory:       "8g",
 			CPUs:         4,
 			Pids:         2048,
-			WorktreesDir: ".worktrees",
+			WorktreesDir: ".worktrees", WorktreeIsolation: "none",
 		},
 		Network:     Network{Mode: "open-no-lan", Allow: []string{}, AllowCIDRs: []string{}},
 		Credentials: Credentials{Scope: "shared"},
@@ -184,9 +188,11 @@ var (
 	NetworkModes = []string{"open", "open-no-lan", "allowlist"} // loosest to strictest
 	CredScopes   = []string{"shared", "per-project"}
 	GitModes     = []string{"local", "push"}
-	ClaudeModes  = []string{"auto", "true", "false"}
-	MountModes   = []string{"ro", "rw"}
-	Thinkings    = []string{"off", "minimal", "low", "medium", "high", "xhigh", "max"}
+	// WorktreeIsolations are the values of sandbox.worktree_isolation.
+	WorktreeIsolations = []string{"none", "reviews", "all"}
+	ClaudeModes        = []string{"auto", "true", "false"}
+	MountModes         = []string{"ro", "rw"}
+	Thinkings          = []string{"off", "minimal", "low", "medium", "high", "xhigh", "max"}
 )
 
 // NetworkStrictness orders network modes: higher is stricter.

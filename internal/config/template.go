@@ -15,6 +15,8 @@ memory = "8g"
 cpus = 4
 pids = 2048
 worktrees_dir = ".worktrees"     # "" disables worktree support
+worktree_isolation = "none"      # which "airlock wt" worktrees get a sandbox of their own:
+                                 #   none (all share the project's, a Herdr workspace each) | reviews | all
 
 [network]
 mode = "open-no-lan"             # open-no-lan | allowlist | open
