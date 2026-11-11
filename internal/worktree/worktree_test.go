@@ -1,9 +1,11 @@
 package worktree
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -402,5 +404,114 @@ func TestAddGivesWorktreeConfigAFileOnlyWhenGitReadsIt(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(AdminDir(path), "config.worktree")); err != nil {
 		t.Errorf("config.worktree missing with the extension on: %v", err)
+	}
+}
+
+// Reviews started at the same time in one repository (two terminals) must each
+// get their own patchset: nothing may be read from state that another fetch
+// overwrites, such as FETCH_HEAD.
+func TestParallelReviewsDoNotMixUpPatchsets(t *testing.T) {
+	f := newFixture(t)
+	const n = 6
+	want := map[int]string{}
+	for i := 0; i < n; i++ {
+		want[1000+i] = f.patchset(t, 1000+i, 1, "change "+strconv.Itoa(i)+"\n")
+	}
+	type result struct {
+		change int
+		res    *ReviewResult
+		err    error
+	}
+	out := make(chan result, n)
+	for c := range want {
+		go func(c int) {
+			res, err := f.repo.Review(Change{Number: c}, "", "", false)
+			out <- result{c, res, err}
+		}(c)
+	}
+	for i := 0; i < n; i++ {
+		r := <-out
+		if r.err != nil {
+			t.Errorf("change %d: %v", r.change, r.err)
+			continue
+		}
+		if got := git(t, f.main, "rev-parse", "refs/heads/review/"+strconv.Itoa(r.change)); got != want[r.change] {
+			t.Errorf("review/%d is at %s, want its own patchset %s", r.change, got, want[r.change])
+		}
+		brief, _ := os.ReadFile(filepath.Join(AdminDir(r.res.Path), briefFile))
+		if !strings.Contains(string(brief), "change "+strconv.Itoa(r.change)+",") {
+			t.Errorf("review %d has the wrong task:\n%s", r.change, brief)
+		}
+	}
+}
+
+func TestReviewNamesTheCommitAndWarnsWhenTheBranchIsNotAtIt(t *testing.T) {
+	f := newFixture(t)
+	sha := f.patchset(t, 4242, 1, "the real change\n")
+
+	// A branch of that name already exists and is somebody else's work.
+	other := commit(t, f.main, "other.txt", "unrelated\n")
+	git(t, f.main, "branch", "review/4242", other)
+
+	res, err := f.repo.Review(Change{Number: 4242}, "", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Note == "" {
+		t.Error("no note although the branch was left on another commit")
+	}
+	if got := git(t, res.Path, "rev-parse", "HEAD"); got != other {
+		t.Errorf("an existing branch must not be moved: HEAD = %s", got)
+	}
+	brief, _ := os.ReadFile(filepath.Join(AdminDir(res.Path), briefFile))
+	for _, want := range []string{sha[:12], "git rev-parse HEAD", "WARNING from airlock", "left alone"} {
+		if !strings.Contains(string(brief), want) {
+			t.Errorf("brief lacks %q:\n%s", want, brief)
+		}
+	}
+	// The commit the brief names is really the patchset, and is available to the agent.
+	if git(t, res.Path, "log", "-1", "--format=%s", sha[:12]) == "" {
+		t.Error("the named commit is not in the repository")
+	}
+}
+
+func TestTransientGitErrors(t *testing.T) {
+	for _, msg := range []string{
+		"git worktree: Preparing worktree (new branch 'x')\nfatal: failed to read .git/worktrees/review-1/commondir: Success",
+		"git fetch: error: cannot lock ref 'refs/airlock/changes/1/1': is at abc but expected def",
+		"git update-ref: fatal: Unable to create '/r/.git/packed-refs.lock': File exists.",
+	} {
+		if !transient(errors.New(msg)) {
+			t.Errorf("not recognised as transient: %s", msg)
+		}
+	}
+	for _, msg := range []string{
+		"git fetch: fatal: couldn't find remote ref refs/changes/45/12345/9",
+		"git worktree: fatal: 'x' is already checked out at '/r/.worktrees/y'",
+		"git ls-remote: fatal: Could not read from remote repository.",
+	} {
+		if transient(errors.New(msg)) {
+			t.Errorf("retried although asking again cannot help: %s", msg)
+		}
+	}
+}
+
+func TestParallelWorktreeAddsAllSucceed(t *testing.T) {
+	f := newFixture(t)
+	const n = 8
+	errs := make(chan error, n)
+	for i := 0; i < n; i++ {
+		go func(i int) {
+			_, err := f.repo.Add("wt"+strconv.Itoa(i), "", "", i%2 == 0)
+			errs <- err
+		}(i)
+	}
+	for i := 0; i < n; i++ {
+		if err := <-errs; err != nil {
+			t.Errorf("parallel add: %v", err)
+		}
+	}
+	if list, err := f.repo.List(); err != nil || len(list) != n {
+		t.Errorf("want %d worktrees, got %d (%v)", n, len(list), err)
 	}
 }

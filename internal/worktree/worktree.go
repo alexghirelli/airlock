@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Repo is the main repository and the directory its worktrees live in.
@@ -84,6 +86,59 @@ func AdminDir(root string) string {
 }
 
 func (r *Repo) git(dir string, args ...string) (string, error) {
+	var out string
+	var err error
+	for attempt := 1; ; attempt++ {
+		if out, err = r.gitOnce(dir, args...); err == nil || attempt == 10 || !transient(err) {
+			return out, err
+		}
+		// Another airlock (or git) is writing in the same repository, as when two
+		// reviews start together: back off a little and ask again.
+		time.Sleep(time.Duration(attempt*30+rand.Intn(50)) * time.Millisecond)
+	}
+}
+
+// transient recognises the failures git reports when it meets another process
+// halfway through writing a lock file or a new worktree's directory. None of
+// them has changed anything yet, so asking again is safe.
+func transient(err error) bool {
+	msg := err.Error()
+	for _, s := range []string{"failed to read .git/worktrees/", "Unable to create", "cannot lock ref", "Another git process", "unable to lock", ".lock': File exists"} {
+		if strings.Contains(msg, s) {
+			return true
+		}
+	}
+	return false
+}
+
+// withLock serialises the changes airlock makes to the repository's worktrees.
+// `git worktree add` is not safe to run twice at once in one repository: the
+// second can read the first's directory half written and fail, after it has
+// already created its branch. If the lock cannot be had in 30 seconds the work
+// goes ahead without it.
+func (r *Repo) withLock(fn func() error) error {
+	f, err := os.OpenFile(filepath.Join(r.Root, ".git", "airlock.lock"), os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		return fn()
+	}
+	defer f.Close()
+	for deadline := time.Now().Add(30 * time.Second); lockFile(f) != nil && time.Now().Before(deadline); {
+		time.Sleep(time.Duration(20+rand.Intn(30)) * time.Millisecond)
+	}
+	defer unlockFile(f)
+	return fn()
+}
+
+// worktreeAdd runs `git worktree add` under the lock, and never retries: a
+// failed add may already have created the branch.
+func (r *Repo) worktreeAdd(args ...string) error {
+	return r.withLock(func() error {
+		_, err := r.gitOnce(r.Root, append([]string{"worktree", "add"}, args...)...)
+		return err
+	})
+}
+
+func (r *Repo) gitOnce(dir string, args ...string) (string, error) {
 	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "LC_ALL=C")
 	var out, errb bytes.Buffer
@@ -140,15 +195,15 @@ func (r *Repo) Add(name, branch, from string, isolated bool) (path string, err e
 	if !r.ok(r.Root, "check-ref-format", "--branch", branch) {
 		return "", fmt.Errorf("invalid branch name %q", branch)
 	}
-	base := []string{"worktree", "add", "--lock", "--reason", "airlock"}
+	base := []string{"--lock", "--reason", "airlock"}
 	switch {
 	case r.branchExists(branch):
 		if from != "" {
 			return "", fmt.Errorf("branch %s already exists; --from only applies to a new branch", branch)
 		}
-		_, err = r.git(r.Root, append(base, path, branch)...)
+		err = r.worktreeAdd(append(base, path, branch)...)
 	case from == "" && len(r.remoteBranches(branch)) == 1:
-		_, err = r.git(r.Root, append(base, "--track", "-b", branch, path, r.remoteBranches(branch)[0])...)
+		err = r.worktreeAdd(append(base, "--track", "-b", branch, path, r.remoteBranches(branch)[0])...)
 	case from == "" && len(r.remoteBranches(branch)) > 1:
 		return "", fmt.Errorf("%s exists on several remotes (%s); say which with --from", branch, strings.Join(r.remoteBranches(branch), ", "))
 	default:
@@ -156,7 +211,7 @@ func (r *Repo) Add(name, branch, from string, isolated bool) (path string, err e
 		if from != "" {
 			args = append(args, from)
 		}
-		_, err = r.git(r.Root, args...)
+		err = r.worktreeAdd(args...)
 	}
 	if err == nil {
 		r.protectConfig(path)
@@ -230,6 +285,11 @@ func (c Change) prefix() string {
 // Name and Branch are the default worktree and branch for a review.
 func (c Change) Name() string   { return fmt.Sprintf("review-%d", c.Number) }
 func (c Change) Branch() string { return fmt.Sprintf("review/%d", c.Number) }
+
+// fetched is where this patchset is kept locally once fetched.
+func (c Change) fetched() string {
+	return fmt.Sprintf("refs/airlock/changes/%d/%d", c.Number, c.Patchset)
+}
 
 // anchor remembers which commit the review branch was last set to, so a later
 // update can tell whether there are local commits on top of it.
@@ -308,10 +368,13 @@ func (r *Repo) Review(c Change, name, branch string, isolated bool) (*ReviewResu
 			return nil, err
 		}
 	}
-	if _, err := r.git(r.Root, "fetch", "--quiet", "--no-tags", remote, c.Ref()); err != nil {
+	// Into a ref of its own, never FETCH_HEAD: that file is shared by every fetch
+	// in the repository, so two reviews started together would read each other's.
+	// The ref also keeps the commit from being garbage collected.
+	if _, err := r.git(r.Root, "fetch", "--quiet", "--no-tags", remote, "+"+c.Ref()+":"+c.fetched()); err != nil {
 		return nil, fmt.Errorf("fetch %s %s: %w", remote, c.Ref(), err)
 	}
-	sha, err := r.git(r.Root, "rev-parse", "--verify", "FETCH_HEAD^{commit}")
+	sha, err := r.git(r.Root, "rev-parse", "--verify", c.fetched()+"^{commit}")
 	if err != nil {
 		return nil, err
 	}
@@ -346,7 +409,7 @@ func (r *Repo) Review(c Change, name, branch string, isolated bool) (*ReviewResu
 			return res, err
 		}
 	}
-	return res, r.writeBrief(path, c, sha, branch)
+	return res, r.writeBrief(path, c, sha, branch, res.Note)
 }
 
 // moveTo moves the branch to sha when that loses nothing, and says why not
@@ -401,8 +464,11 @@ const (
 	focusFile = "airlock-focus.md"  // written by the user
 )
 
-// writeBrief describes the review the agent in this worktree is there to do.
-func (r *Repo) writeBrief(path string, c Change, sha, branch string) error {
+// writeBrief describes the review the agent in this worktree is there to do. It
+// names the commit itself, not just the branch: if the branch could not be moved
+// to the patchset (it existed, or has commits of its own), the review still
+// looks at the right change.
+func (r *Repo) writeBrief(path string, c Change, sha, branch, note string) error {
 	admin := AdminDir(path)
 	if admin == "" {
 		return nil
@@ -410,14 +476,19 @@ func (r *Repo) writeBrief(path string, c Change, sha, branch string) error {
 	subject, _ := r.git(r.Root, "log", "-1", "--format=%s", sha)
 	author, _ := r.git(r.Root, "log", "-1", "--format=%an", sha)
 	parent, _ := r.git(r.Root, "rev-parse", "--verify", "-q", sha+"^")
+	short := shortOr(sha, "")
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Task for this worktree\n\n")
 	fmt.Fprintf(&b, "You are reviewing Gerrit change %d, patchset %d: %q, by %s.\n", c.Number, c.Patchset, subject, author)
-	fmt.Fprintf(&b, "The patchset is checked out on the local branch `%s`", branch)
+	fmt.Fprintf(&b, "The patchset is the commit `%s`", short)
 	if parent != "" {
-		fmt.Fprintf(&b, "; its parent is `%s`, so `git diff %s..HEAD` is the change", shortOr(parent, ""), shortOr(parent, ""))
+		fmt.Fprintf(&b, " (parent `%s`): `git show %s` and `git diff %s..%s` are the change", shortOr(parent, ""), short, shortOr(parent, ""), short)
 	}
-	b.WriteString(".\n\n")
+	fmt.Fprintf(&b, ". It should be checked out on the local branch `%s`: run `git rev-parse HEAD` and, if it does not start with `%s`, tell the user before you go on, and review the commit above instead of HEAD.\n", branch, short)
+	if note != "" {
+		fmt.Fprintf(&b, "\nWARNING from airlock: %s\n", note)
+	}
+	b.WriteString("\n")
 	b.WriteString("- Read the change against its parent, and the code around it, before judging it.\n")
 	b.WriteString("- Do not push, submit, abandon or vote. Do not edit files unless the user asks; propose a fix first.\n")
 	b.WriteString("- Report findings grouped by file: what is wrong, why it matters, and a suggested fix. If there is nothing to report, say so.\n")
@@ -523,14 +594,17 @@ func (r *Repo) Remove(name string, force bool) (branch string, err error) {
 			return branch, fmt.Errorf("%s has uncommitted changes; commit or discard them, or use --force", name)
 		}
 	}
-	_ = r.ok(r.Root, "worktree", "unlock", path)
-	args := []string{"worktree", "remove"}
-	if force {
-		args = append(args, "--force")
-	}
-	if _, err := r.git(r.Root, append(args, path)...); err != nil {
-		_ = r.ok(r.Root, "worktree", "lock", "--reason", "airlock", path)
-		return branch, err
-	}
-	return branch, nil
+	err = r.withLock(func() error {
+		_ = r.ok(r.Root, "worktree", "unlock", path)
+		args := []string{"worktree", "remove"}
+		if force {
+			args = append(args, "--force")
+		}
+		if _, err := r.git(r.Root, append(args, path)...); err != nil {
+			_ = r.ok(r.Root, "worktree", "lock", "--reason", "airlock", path)
+			return err
+		}
+		return nil
+	})
+	return branch, err
 }
