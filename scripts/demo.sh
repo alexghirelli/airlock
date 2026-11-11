@@ -67,7 +67,24 @@ export AIRLOCK_CREDENTIALS_SCOPE=per-project
 # (with the same HOME the recording uses, or airlock sees a changed configuration)
 HOME="$work/home" "$work/bin/airlock" exec "$app" -- airlock-herdr-up --no-focus   # the project's own Herdr workspace
 
-export AIRLOCK_DEMO_DIR="$app" AIRLOCK_DEMO_HOME="$work/home"
+# Shell setup for the recording: the prompt, title cards, and a verdict after each
+# `airlock exec` that comes from the command's real exit status.
+cat > "$work/rc.sh" <<'RC'
+export HOME="$AIRLOCK_DEMO_HOME"
+set -o history   # vhs starts its shell without history; the verdict below reads it
+PS1='\[\e[32m\]myapp\[\e[0m\] $ '
+card() { clear; printf '\n\n\n\n   \e[1;35m%s\e[0m\n\n   \e[2m%s\e[0m\n' "$1" "$2"; }
+verdict() {
+  local s=$?
+  case "$(history 1)" in
+    *"airlock exec"*)
+      if [ "$s" -ne 0 ]; then printf '\e[1;31m✗ blocked\e[0m\n'; else printf '\e[1;32m✓ allowed\e[0m\n'; fi ;;
+  esac
+}
+PROMPT_COMMAND=verdict
+RC
+
+export AIRLOCK_DEMO_DIR="$app" AIRLOCK_DEMO_HOME="$work/home" AIRLOCK_DEMO_RC="$work/rc.sh"
 export PATH="$work/bin:$PATH"
 vhs assets/demo.tape
 ls -lh assets/demo.gif
