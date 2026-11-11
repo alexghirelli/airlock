@@ -259,6 +259,19 @@ The tests set `AIRLOCK_PRUNE_IMAGES=0` so the several image variants they build
 survive each other. Normally airlock removes superseded `airlock:*` tags after a
 build; the image is about 1.3 GB (1.8 GB with Claude Code).
 
+### Releasing
+
+Releases come from annotated tags, and the tag message is the release text:
+
+```sh
+git tag -a v0.2.0 -F notes.md   # first line: short title; then what changed, for users
+git push origin v0.2.0
+```
+
+The `release` workflow refuses lightweight tags and messages without a title and
+at least one line of detail. The release is named `airlock v0.2.0: <title>`. It builds the archives, publishes them with
+`SHA256SUMS`, and appends the install line and a link to the full changelog.
+
 ## Licence
 
 Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).

@@ -1,6 +1,8 @@
 name: release
 
-# Push a tag such as v0.1.0 to publish a release.
+# Push an annotated tag such as v0.1.0 to publish a release. The tag's message
+# becomes the release notes, so write what changed for users:
+#   git tag -a v0.1.0 -F notes.md   (first line is a title, then the details)
 on:
   push:
     tags: ['v*']
@@ -13,6 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -20,12 +24,35 @@ jobs:
         run: go vet ./... && go test ./...
       - name: build archives
         run: scripts/build-release.sh "$GITHUB_REF_NAME"
+      - name: release notes
+        run: |
+          # checkout can replace an annotated tag with a plain one; fetch the real object
+          git fetch --force origin "+refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
+          if [ "$(git cat-file -t "refs/tags/$GITHUB_REF_NAME")" != tag ]; then
+            echo "::error::$GITHUB_REF_NAME is a lightweight tag; create it with git tag -a and a message describing the release"
+            exit 1
+          fi
+          git tag -l --format='%(contents)' "$GITHUB_REF_NAME" | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' > notes.md
+          if [ "$(grep -c . notes.md)" -lt 2 ]; then
+            echo "::error::the message of tag $GITHUB_REF_NAME needs a title and at least one line saying what changed"
+            exit 1
+          fi
+          # The first line is the title ("airlock vX: <line>"); the rest is the body.
+          printf 'airlock %s: %s' "$GITHUB_REF_NAME" "$(sed -n 1p notes.md)" > title.txt
+          sed -n '2,$p' notes.md | sed -e '/./,$!d' > body.md
+          prev="$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null || true)"
+          {
+            cat body.md
+            printf '\n---\n\nInstall or upgrade: `curl -fsSL https://raw.githubusercontent.com/%s/main/install.sh | sh` (checksums in `SHA256SUMS`). After upgrading, run `airlock build`, then `airlock start --recreate` if the notes say the image or the sandbox settings changed.\n' "$GITHUB_REPOSITORY"
+            if [ -n "$prev" ]; then
+              printf '\nFull changelog: https://github.com/%s/compare/%s...%s\n' "$GITHUB_REPOSITORY" "$prev" "$GITHUB_REF_NAME"
+            fi
+          } > release.md
       - name: publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "$GITHUB_REF_NAME" dist/* \
-            --title "airlock $GITHUB_REF_NAME" \
+            --title "$(cat title.txt)" \
             --verify-tag \
-            --generate-notes \
-            --notes "Early release. Tested on Linux only: the macOS and Windows archives compile but have not been run. Install with install.sh (see the README). The sandbox image is built on your machine the first time you run airlock."
+            --notes-file release.md
