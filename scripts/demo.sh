@@ -27,7 +27,6 @@ git -C "$app" -c user.name=demo -c user.email=demo@example.org commit -q --allow
 printf '# myapp\n\nA small project to try airlock on.\n' > "$app/README.md"
 
 # A ready sandbox, so the recording starts at the first command.
-"$work/bin/airlock" start --no-attach "$app"
 "$work/bin/airlock" exec "$app" -- true
 
 export AIRLOCK_DEMO_DIR="$app"
