@@ -1,14 +1,20 @@
 # airlock
 
-A sandbox launcher for AI coding agents. Run `airlock` in a project folder and it
-starts (or resumes) a dedicated, hardened container for that project and attaches
-you to it, with [Pi](https://pi.dev) and [Herdr](https://herdr.dev) ready to work.
+One hardened container per project for AI coding agents, with parallel git worktrees
+and patch reviews from Gerrit, GitHub, GitLab or Bitbucket. Nothing on your machine
+but Docker. Run `airlock` in a project folder and it starts (or resumes) a dedicated
+container for that project and attaches you to it, with [Pi](https://pi.dev) and
+[Herdr](https://herdr.dev) ready to work.
 
 Agents work freely inside the box. By default they cannot reach your home
-directory, your local network, your git credentials or the Docker socket.
+directory, your local network, your git credentials or the Docker socket. They can
+reach the internet, so anything they can read in the project they could also send
+out: airlock limits the damage to what you put in the box, it does not make a
+compromised agent harmless (see [Security model](#security-model)).
 
-> **Status: MVP.** The core is implemented and covered by automated tests (below).
-> Several features from the design are not built yet; see [What is not there yet](#what-is-not-there-yet).
+> **Status: early.** The core is implemented, covered by automated tests (below) and
+> used daily on Linux and macOS (Docker Desktop). Some features from the design are
+> not built yet; see [What is not there yet](#what-is-not-there-yet).
 
 ## Install
 
@@ -303,8 +309,18 @@ How:
 
 What it does **not** protect against:
 
-- **A container shares the host kernel.** A kernel exploit by an agent with `sudo`
-  can escape. A stronger backend (gVisor, microVM) is on the roadmap, not here.
+- **Data leaving over the internet.** The default network mode lets the agent reach
+  the internet, so a prompt-injected agent can send out anything it can read: your
+  source, the environment variables you pass in, the tokens you mount. The firewall
+  blocks your computer and LAN, not the outside. Keep secrets out of the project
+  (`.airlockignore` hides files from the box; `airlock doctor` warns about visible
+  secret-looking ones) and out of the variables you pass. A domain allowlist is
+  not built yet.
+- **A container shares the host kernel.** The agent is root inside the box (it has
+  `sudo`, so it can install packages), and a kernel exploit could escape from there.
+  Docker Sandboxes and similar tools use a microVM for this; airlock has a gVisor
+  option (`runsc`, not yet part of the test suite) and a microVM backend is only an
+  idea so far.
 - Anything you hand over: a read-write mount can be modified, a mounted `~/.aws`
   is readable, a `push` token can push, environment variables are visible to every
   process in the box (and in `docker inspect`).
@@ -319,9 +335,7 @@ What it does **not** protect against:
   provider logins. `per-project` isolates them. `airlock login --reset` wipes them.
 - The toolchain volume is shared between projects.
 - The firewall allows DNS to the resolvers Docker forwards to (needed for name
-  resolution), so DNS can carry data out. Public internet access can exfiltrate
-  anything the agent can read, including your source. Hide secrets with
-  `.airlockignore`; `airlock doctor` warns about visible secret-looking files.
+  resolution), so DNS can carry data out.
 - Rootless Docker/Podman: file ownership of the project may not map to your user
   (`doctor` says so).
 
