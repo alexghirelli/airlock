@@ -9,12 +9,12 @@ import (
 )
 
 // Pi packages and Claude Code (spec section 6/8): a configured package is
-// installed into the credentials volume, a package that needs Claude Code makes
-// the image include it, the default model reaches Pi, and provider keys reach
+// installed into the credentials volume, a package that needs Claude Code gets it
+// installed in the sandbox, the default model reaches Pi, and provider keys reach
 // the sandbox from the host environment.
 func TestPackagesDefaultModelAndEnv(t *testing.T) {
-	// Builds a second image variant (Claude Code is a 340 MB download) and installs
-	// an npm package: minutes of network time. Run it with AIRLOCK_IT_SLOW=1.
+	// Installs Claude Code (a 340 MB download) and an npm package: minutes of
+	// network time. Run it with AIRLOCK_IT_SLOW=1.
 	if os.Getenv("AIRLOCK_IT_SLOW") == "" {
 		t.Skip("slow: set AIRLOCK_IT_SLOW=1 to run")
 	}
