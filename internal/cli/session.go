@@ -38,7 +38,7 @@ func (e *env) cmdStart(ctx context.Context) (int, error) {
 	if cfg.Sandbox.UI == "herdr" {
 		release = sandbox.AcquireAttach(m.Name()) // lets `airlock review` in another terminal stay quiet
 	}
-	code, err := m.Attach(ctx, sandbox.Command(cfg.Sandbox.UI))
+	code, err := m.Attach(ctx, sandbox.Command(cfg.Sandbox.UI, cfg.Agent.Kind))
 	release()
 	if err != nil {
 		return 1, err
@@ -74,7 +74,7 @@ func (e *env) cmdShell(ctx context.Context) (int, error) {
 	if err != nil {
 		return 1, err
 	}
-	code, err := m.Attach(ctx, sandbox.Command("shell"))
+	code, err := m.Attach(ctx, sandbox.Command("shell", ""))
 	if err != nil {
 		return 1, err
 	}

@@ -513,11 +513,15 @@ func (m *Manager) showInitWarnings(ctx context.Context, name string) {
 	}
 }
 
-// Command returns the command line for a UI.
-func Command(ui string) []string {
+// Command returns the command line for a UI. "pi" and "agent" run the configured
+// agent directly, without Herdr.
+func Command(ui, agent string) []string {
 	switch ui {
-	case "pi":
-		return []string{"pi"}
+	case "pi", "agent":
+		if agent == "" {
+			agent = "pi"
+		}
+		return []string{agent}
 	case "shell":
 		return []string{"bash", "-l"}
 	}
@@ -558,7 +562,7 @@ func (m *Manager) Attach(ctx context.Context, cmd []string) (int, error) {
 // PrepareHerdr makes sure the project's Herdr session has Pi (or, with team,
 // the team lead and its specialists) running before the UI attaches.
 func (m *Manager) PrepareHerdr(ctx context.Context, team bool) error {
-	cmd := []string{"airlock-herdr-up"}
+	cmd := []string{"airlock-herdr-up", "--agent", m.Config.Config.Agent.Kind}
 	if team {
 		cmd = append(cmd, "--team")
 	}

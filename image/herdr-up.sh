@@ -6,12 +6,16 @@
 #   airlock-herdr-up --workspace DIR  the same for a git worktree DIR that shares this
 #                                     sandbox ([--no-focus] leaves the view where it is)
 #   airlock-herdr-up --close DIR      close the workspace of a worktree that is going away
+# Every form takes --agent KIND (pi, claude): the agent to run there, instead of the
+# sandbox's default. It is installed first when it is not there yet.
 set -euo pipefail
 
 project="${AIRLOCK_PROJECT_DIR:-$PWD}"
 dir="$project"; team=0; focus=--focus; close=0
+kind="$(jq -r '.agent.kind // "pi"' /etc/airlock/manifest.json 2>/dev/null || echo pi)"
 while (( $# )); do
   case "$1" in
+    --agent) kind="$2"; shift ;;
     --team) team=1 ;;
     --no-focus) focus=--no-focus ;;
     --workspace) dir="$2"; shift ;;
@@ -20,10 +24,10 @@ while (( $# )); do
   shift
 done
 label="$(basename "$dir")"
-agent=pi
+agent="$kind"
 if [[ "$dir" != "$project" ]]; then
   team=0
-  agent="pi-${label//[^A-Za-z0-9_-]/-}" # one agent name per workspace
+  agent="$kind-${label//[^A-Za-z0-9_-]/-}" # one agent name per workspace
 fi
 
 ready() { herdr status server 2>&1 | grep -q 'status: running'; }
@@ -86,5 +90,12 @@ if (( team )); then
   # pi-team turns this pane into the lead and opens the specialists around it.
   herdr pane run "$pane" "pi-team up --focus" >/dev/null
 else
-  herdr agent start "$agent" --kind pi --pane "$pane" --timeout 120000 >/dev/null
+  # Not in the image (Claude Code) or a version other than the image's (Pi): fetch it now.
+  airlock-agent-install "$kind" >&2
+  if ! herdr agent start "$agent" --kind "$kind" --pane "$pane" --timeout 120000 >/dev/null; then
+    # Pi always comes up ready. Another agent may be waiting for you (a login, a
+    # first-run question); it is running in the pane either way.
+    [[ "$kind" != pi ]] || exit 1
+    echo "airlock: $kind is running but Herdr did not see it ready (a login or a question may be waiting in its pane)" >&2
+  fi
 fi
