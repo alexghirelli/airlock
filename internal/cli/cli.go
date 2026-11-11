@@ -50,6 +50,7 @@ The path defaults to the git root of the current directory.
 Flags:
   --team             start the agent team (herdr UI)
   --ui <ui>          herdr | pi | shell
+  --agent <kind>     pi | claude: the agent for this run (installed on first use)
   --network <mode>   open-no-lan | allowlist | open
   --ephemeral        throw the sandbox away when the session ends
   --recreate         recreate the sandbox if its fixed settings changed
@@ -84,6 +85,7 @@ type args struct {
 	team      bool
 	teamSet   bool
 	ui        string
+	agent     string
 	network   string
 	ephemer   bool
 	recreate  bool
@@ -160,6 +162,8 @@ func parseArgs(argv []string) (*args, error) {
 				a.help = true
 			case "--ui":
 				a.ui, err = value(&i, name, inline, hasInline)
+			case "--agent":
+				a.agent, err = value(&i, name, inline, hasInline)
 			case "--network":
 				a.network, err = value(&i, name, inline, hasInline)
 			case "--remote":
@@ -296,7 +300,7 @@ type loaded struct {
 }
 
 func (e *env) flags() config.Flags {
-	f := config.Flags{UI: e.a.ui, Network: e.a.network, Ephemeral: e.a.ephemer}
+	f := config.Flags{UI: e.a.ui, Agent: e.a.agent, Network: e.a.network, Ephemeral: e.a.ephemer}
 	if e.a.teamSet {
 		t := e.a.team
 		f.Team = &t

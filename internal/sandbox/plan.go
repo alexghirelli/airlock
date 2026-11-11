@@ -248,6 +248,14 @@ func BuildPlan(in PlanInput) (*Plan, error) {
 	man.Setup = c.Setup
 	man.Pi.Settings = piSettings(c)
 	man.ClaudeCode = c.NeedsClaudeCode()
+	man.Agent.Kind = c.Agent.Kind
+	man.Agent.Args = c.Agent.Args
+	man.Agent.Versions = map[string]string{"pi": c.PiVersion(), "claude": c.ClaudeVersion()}
+	// What the start installs: the agent, and Claude Code when something else needs it.
+	man.Agent.Install = []string{c.Agent.Kind}
+	if c.Agent.Kind != "claude" && c.NeedsClaudeCode() {
+		man.Agent.Install = append(man.Agent.Install, "claude")
+	}
 	manJSON, err := json.MarshalIndent(man, "", "  ")
 	if err != nil {
 		return nil, err
@@ -262,6 +270,7 @@ func BuildPlan(in PlanInput) (*Plan, error) {
 		{Path: "/etc/airlock/AGENTS.md", Data: agents},
 		{Path: "/etc/airlock/models.env", Data: []byte(modelsEnv(c))},
 		{Path: "/etc/airlock/pi.args", Data: []byte(piArgs(c, mountInfos))},
+		{Path: "/etc/airlock/claude-mcp.json", Data: claudeMCP(mcp)},
 	}
 	if c.Agents.Concise {
 		plan.Files = append(plan.Files, backend.File{Path: conciseSkillPath + "/SKILL.md", Data: []byte(mustAsset("image/skills/concise/SKILL.md"))})
@@ -391,6 +400,12 @@ type manifest struct {
 	Mise       []string       `json:"mise"`
 	Setup      []config.Setup `json:"setup"`
 	ClaudeCode bool           `json:"claude_code"`
+	Agent      struct {
+		Kind     string            `json:"kind"`
+		Versions map[string]string `json:"versions"` // what airlock-agent-install puts in place
+		Install  []string          `json:"install"`  // installed when the sandbox starts
+		Args     []string          `json:"args"`
+	} `json:"agent"`
 }
 
 // piSettings builds the overlay merged into the shared Pi settings.json: the
@@ -421,7 +436,33 @@ func piArgs(c *config.Config, mounts []mountInfo) string {
 	if m := c.Pi.DefaultModel; m != "" {
 		fmt.Fprintf(&b, "--model\n%s\n", m)
 	}
+	if c.Agent.Kind == "pi" {
+		for _, a := range c.Agent.Args {
+			fmt.Fprintf(&b, "%s\n", a)
+		}
+	}
 	return b.String()
+}
+
+// claudeMCP is the MCP configuration for Claude Code (--mcp-config): the same
+// servers as Pi gets, in its format. Remote servers say their transport; the
+// ${VAR} references are expanded by Claude Code from the sandbox environment.
+func claudeMCP(mcp map[string]any) []byte {
+	servers := map[string]any{}
+	for name, v := range mcp {
+		entry := map[string]any{}
+		for k, val := range v.(map[string]any) {
+			if k != "description" {
+				entry[k] = val
+			}
+		}
+		if _, remote := entry["url"]; remote {
+			entry["type"] = "http"
+		}
+		servers[name] = entry
+	}
+	b, _ := json.MarshalIndent(map[string]any{"mcpServers": servers}, "", "  ")
+	return b
 }
 
 var agentsTmpl = template.Must(template.New("agents").Parse(mustAsset("image/AGENTS.md.tmpl")))

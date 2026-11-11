@@ -2,6 +2,7 @@ package sandbox
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -925,5 +926,64 @@ func TestWorktreeFallsBackToTheMainAirlockignore(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("k.pem not masked in the worktree: %+v", masks)
+	}
+}
+
+func TestPlanAgentManifestAndClaudeMCP(t *testing.T) {
+	proj := newProject(t)
+	toml := "[agent]\nkind = \"claude\"\nversion = \"latest\"\nargs = [\"--dangerously-skip-permissions\"]\n" +
+		"[[mcp]]\nname = \"docs\"\nurl = \"https://example.com/mcp\"\ndescription = \"Docs\"\n" +
+		"[[mcp]]\nname = \"tool\"\ncommand = \"node\"\nargs = [\"/mnt/tool.js\"]\n"
+	plan := testPlan(t, toml, proj, nil)
+	files := map[string]string{}
+	for _, f := range plan.Files {
+		files[f.Path] = string(f.Data)
+	}
+	var man struct {
+		Agent struct {
+			Kind     string            `json:"kind"`
+			Versions map[string]string `json:"versions"`
+			Install  []string          `json:"install"`
+			Args     []string          `json:"args"`
+		} `json:"agent"`
+	}
+	if err := json.Unmarshal([]byte(files["/etc/airlock/manifest.json"]), &man); err != nil {
+		t.Fatal(err)
+	}
+	if man.Agent.Kind != "claude" || man.Agent.Versions["claude"] != "latest" || man.Agent.Versions["pi"] != config.PinnedPiVersion ||
+		len(man.Agent.Install) != 1 || man.Agent.Install[0] != "claude" || len(man.Agent.Args) != 1 {
+		t.Errorf("agent manifest: %+v", man.Agent)
+	}
+	var mcp struct {
+		Servers map[string]map[string]any `json:"mcpServers"`
+	}
+	if err := json.Unmarshal([]byte(files["/etc/airlock/claude-mcp.json"]), &mcp); err != nil {
+		t.Fatal(err)
+	}
+	if mcp.Servers["docs"]["type"] != "http" || mcp.Servers["docs"]["url"] != "https://example.com/mcp" || mcp.Servers["docs"]["description"] != nil {
+		t.Errorf("remote server: %v", mcp.Servers["docs"])
+	}
+	if mcp.Servers["tool"]["command"] != "node" || mcp.Servers["tool"]["type"] != nil {
+		t.Errorf("stdio server: %v", mcp.Servers["tool"])
+	}
+	if strings.Contains(files["/etc/airlock/pi.args"], "dangerously") {
+		t.Error("Claude Code's arguments leaked into Pi's")
+	}
+}
+
+func TestPlanPiAgentGetsItsArgsAndInstallsClaudeForTheBridge(t *testing.T) {
+	proj := newProject(t)
+	plan := testPlan(t, "[agent]\nargs = [\"--thinking\", \"high\"]\n[pi]\npackages = [\"npm:pi-claude-bridge@0.11.0\"]\n", proj, nil)
+	for _, f := range plan.Files {
+		switch f.Path {
+		case "/etc/airlock/pi.args":
+			if !strings.HasSuffix(string(f.Data), "--thinking\nhigh\n") {
+				t.Errorf("pi.args = %q", f.Data)
+			}
+		case "/etc/airlock/manifest.json":
+			if !strings.Contains(string(f.Data), `"pi",`) || !strings.Contains(string(f.Data), `"claude"`) {
+				t.Errorf("a Pi package that needs Claude Code must install it: %s", f.Data)
+			}
+		}
 	}
 }

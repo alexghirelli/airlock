@@ -105,7 +105,11 @@ func (e *env) cmdLogin(ctx context.Context) (int, error) {
 		}
 	}
 	if bridge {
-		e.errf("airlock: logging in to Claude Code (used by the %s models)", bridgeProvider)
+		if cfg.Agent.Kind == "claude" {
+			e.errf("airlock: logging in to Claude Code (the agent of this sandbox)")
+		} else {
+			e.errf("airlock: logging in to Claude Code (used by the %s models)", bridgeProvider)
+		}
 		code, err := m.Attach(ctx, []string{"claude", "auth", "login"})
 		if err != nil {
 			return 1, err
