@@ -16,8 +16,19 @@ if [[ -z "$bin" ]]; then
   [[ -n "$bin" ]] || { echo "demo: no airlock in PATH; pass the binary as an argument" >&2; exit 1; }
 fi
 
-work="$(mktemp -d)"
-trap 'AIRLOCK_DEMO_DIR="$work/myapp" "$bin" rm "$work/myapp" >/dev/null 2>&1 || true; rm -rf "$work"' EXIT
+# A fixed path, so the GIF shows the same one every time (the project is mounted at
+# the same absolute path inside the sandbox).
+work=/tmp/airlock-demo
+"$bin" rm "$work/myapp" >/dev/null 2>&1 || true
+rm -rf "$work"
+cleanup() {
+  # airlock rm keeps a per-project credentials volume; this one is the demo's own.
+  vols="$(docker ps -a -q --filter "label=io.airlock.project=$work/myapp" | xargs -r docker inspect --format '{{range .Mounts}}{{.Name}} {{end}}' 2>/dev/null | tr ' ' '\n' | grep '^airlock-creds-myapp-' || true)"
+  "$bin" rm "$work/myapp" >/dev/null 2>&1 || true
+  [[ -z "$vols" ]] || docker volume rm $vols >/dev/null 2>&1 || true
+  rm -rf "$work"
+}
+trap cleanup EXIT
 mkdir -p "$work/bin" "$work/myapp"
 ln -s "$(readlink -f "$bin")" "$work/bin/airlock"
 
@@ -25,6 +36,10 @@ app="$work/myapp"
 git -C "$app" init -q
 git -C "$app" -c user.name=demo -c user.email=demo@example.org commit -q --allow-empty -m "Initial commit"
 printf '# myapp\n\nA small project to try airlock on.\n' > "$app/README.md"
+
+# Logins and settings of the demo live in a volume of its own, removed with the sandbox,
+# so what is on your machine does not show up in the recording.
+export AIRLOCK_CREDENTIALS_SCOPE=per-project
 
 # A ready sandbox, so the recording starts at the first command.
 "$work/bin/airlock" exec "$app" -- true
