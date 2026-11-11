@@ -17,4 +17,13 @@ case "${1:-}" in
 esac
 # Test hook: show the arguments Pi would get, without starting it.
 if [[ -n "${AIRLOCK_PI_ARGS_ONLY:-}" ]]; then printf '%s\n' "${args[@]}" "$@"; exit 0; fi
-exec /opt/pi/node "$(readlink -f /opt/pi/bin/pi)" "${args[@]}" "$@"
+# The image has one Pi version; another one (agent.version) is installed into the
+# tools volume by airlock-agent-install.
+bin=/opt/pi/bin/pi
+ver="$(jq -r '.agent.versions.pi // empty' /etc/airlock/manifest.json 2>/dev/null)"
+if [[ -n "$ver" && "$ver" != "$(cat /opt/pi/VERSION)" ]]; then
+  alt="$HOME/.local/share/mise/agents/pi/$ver/bin/pi"
+  if [[ ! -e "$alt" ]]; then airlock-agent-install pi >&2 || echo "airlock: could not install Pi $ver; using the image's" >&2; fi
+  [[ -e "$alt" ]] && bin="$alt"
+fi
+exec /opt/pi/node "$(readlink -f "$bin")" "${args[@]}" "$@"

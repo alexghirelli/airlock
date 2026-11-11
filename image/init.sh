@@ -82,6 +82,14 @@ while read -r pkg; do
   fi
 done < <(m '.pi.packages[]?')
 
+# --- agents: the one this sandbox opens (and Claude Code, when a Pi package goes
+# through it) are installed now, into the tools volume, so the first attach does
+# not have to wait. Pi at the image's version is already there.
+while read -r kind; do
+  [[ -n "$kind" ]] || continue
+  airlock-agent-install "$kind" || warn "could not install $kind (is the network policy blocking it?)"
+done < <(m '.agent.install[]?')
+
 # --- toolchains requested in the config (idempotent; cached in the tools volume)
 while read -r tool; do
   [[ -n "$tool" ]] || continue

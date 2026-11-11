@@ -6,26 +6,21 @@
 
 ARG NODE_VERSION=22
 
-# ---- Pi (and optionally Claude Code) run on their own private Node, so project
-# ---- toolchains installed with mise can never shadow or break them.
+# ---- Pi runs on its own private Node, so project toolchains installed with mise
+# ---- can never shadow or break it. Other agents (Claude Code, other Pi versions)
+# ---- are not here: they are installed into the tools volume when needed.
 FROM node:${NODE_VERSION}-trixie-slim AS agents
 ARG PI_PACKAGE=@earendil-works/pi-coding-agent
 ARG PI_VERSION
-ARG CLAUDE_CODE=0
-ARG CLAUDE_CODE_PACKAGE=@anthropic-ai/claude-code
-ARG CLAUDE_CODE_VERSION=latest
 RUN test -n "${PI_VERSION}" \
  && npm install -g --ignore-scripts --prefix /opt/pi "${PI_PACKAGE}@${PI_VERSION}" \
  && cp "$(command -v node)" /opt/pi/node \
  && cp -r /usr/local/lib/node_modules/npm /opt/pi/npm \
  && mkdir -p /opt/pi/shims && ln -s ../node /opt/pi/shims/node \
- && if [ "${CLAUDE_CODE}" = 1 ]; then \
-      npm install -g --prefix /opt/claude "${CLAUDE_CODE_PACKAGE}@${CLAUDE_CODE_VERSION}"; \
-    else mkdir -p /opt/claude; fi
+ && echo "${PI_VERSION}" > /opt/pi/VERSION && echo "${PI_PACKAGE}" > /opt/pi/PACKAGE
 
 # ---- runtime ----
 FROM debian:trixie-slim
-ARG CLAUDE_CODE=0
 ARG EXTRA_APT=""
 
 ENV LANG=C.UTF-8 \
@@ -53,16 +48,14 @@ RUN useradd -m -s /bin/bash -u 1000 agent \
  && mkdir -p /etc/airlock /creds /mnt /home/agent/.local/bin /home/agent/.local/share/mise \
  && chown -R agent:agent /creds /home/agent
 
-# Pi gets a wrapper that calls its private node directly. Claude Code is a
-# native binary (npm unpacks the one for this architecture), so a symlink does.
+# Pi gets a wrapper that calls its private node directly. `claude` is a wrapper too:
+# the program itself is installed on first use (agent-install.sh), never baked in.
 COPY --from=agents /opt/pi /opt/pi
-COPY --from=agents /opt/claude /opt/claude
 COPY pi-wrapper.sh /usr/local/bin/pi
+COPY claude-wrapper.sh /usr/local/bin/claude
+COPY agent-install.sh /usr/local/bin/airlock-agent-install
 COPY npm-wrapper.sh /opt/pi/shims/npm
-RUN chmod 0755 /usr/local/bin/pi /opt/pi/shims/npm \
- && if [ "${CLAUDE_CODE}" = 1 ]; then \
-      ln -s "$(readlink -f /opt/claude/bin/claude)" /usr/local/bin/claude && claude --version; \
-    fi \
+RUN chmod 0755 /usr/local/bin/pi /usr/local/bin/claude /usr/local/bin/airlock-agent-install /opt/pi/shims/npm \
  && pi --version
 
 # mise (toolchains per project) and Herdr (agent multiplexer), both system-wide.
