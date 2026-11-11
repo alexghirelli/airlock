@@ -30,6 +30,7 @@ scope = "shared"                 # shared (one login volume for all projects) | 
 mode = "local"                   # local | push
 token_env = ""                   # host env var holding a token, used only when mode = "push"
 hosts = ["github.com"]           # hosts the token is offered to
+review_remote = ""               # remote that "airlock review" fetches from (empty = the one a URL points at, else gerrit, origin, upstream)
 gerrit_remote = ""               # remote that "airlock wt review" fetches from (empty = "gerrit" if it exists, else "origin")
 
 [pi]
