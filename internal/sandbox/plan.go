@@ -19,6 +19,7 @@ import (
 	"github.com/alexghirelli/airlock/internal/backend"
 	"github.com/alexghirelli/airlock/internal/config"
 	"github.com/alexghirelli/airlock/internal/version"
+	"github.com/alexghirelli/airlock/internal/worktree"
 )
 
 // Names shared by all sandboxes on a machine.
@@ -141,8 +142,21 @@ func BuildPlan(in PlanInput) (*Plan, error) {
 
 	// ---- mounts ----
 	var binds []backend.Bind
+	tmpfs := map[string]string{"/run": "rw,nosuid,nodev,mode=0755,size=64m"}
 	binds = append(binds, backend.Bind{Source: p.Root, Target: p.Path})
-	for _, g := range gitProtectedPaths(p) {
+	if p.IsWorktree() {
+		// A worktree sees only itself and the repository's git directory,
+		// which its .git file points to by absolute path.
+		gd := p.GitDir()
+		binds = append(binds, backend.Bind{Source: gd, Target: containerPath(gd)})
+	} else if wt := strings.Trim(filepath.ToSlash(c.Sandbox.WorktreesDir), "/"); wt != "" {
+		// Worktrees in the isolated folder have a sandbox of their own: hide
+		// them here, so no sandbox can read or change another's files. The
+		// worktrees next to the folder share this sandbox and stay visible.
+		tmpfs[path.Join(p.Path, wt, worktree.IsolatedDir)] = "ro,nosuid,nodev,noexec,size=4k"
+	}
+	worktreeConfig := host.gitConfig(p.RepoRoot(), "extensions.worktreeConfig") == "true"
+	for _, g := range gitProtectedPaths(p, worktreeConfig) {
 		binds = append(binds, backend.Bind{Source: g.host, Target: g.container, ReadOnly: true})
 	}
 	var mountInfos []mountInfo
@@ -165,7 +179,7 @@ func BuildPlan(in PlanInput) (*Plan, error) {
 
 	credsVol := CredsVolumeBase
 	if c.Credentials.Scope == "per-project" {
-		credsVol = CredsVolumeBase + "-" + p.Slug
+		credsVol = CredsVolumeBase + "-" + p.FamilySlug()
 	}
 	volumes := []backend.VolumeMount{
 		{Name: credsVol, Target: "/creds"},
@@ -276,7 +290,7 @@ func BuildPlan(in PlanInput) (*Plan, error) {
 		Env:         envList(env),
 		Binds:       binds,
 		Volumes:     volumes,
-		Tmpfs:       map[string]string{"/run": "rw,nosuid,nodev,mode=0755,size=64m"},
+		Tmpfs:       tmpfs,
 		Network:     NetworkName,
 		CapAdd:      append([]string(nil), keptCaps...),
 		Init:        true,
@@ -312,14 +326,30 @@ type protectedPath struct{ host, container string }
 
 // gitProtectedPaths returns the repository files mounted read-only so the
 // agent cannot plant code that later runs on the host: hooks and config
-// (core.hooksPath, core.fsmonitor, aliases, filter drivers).
-func gitProtectedPaths(p *Project) []protectedPath {
-	gitDir := filepath.Join(p.Root, ".git")
+// (core.hooksPath, core.fsmonitor, aliases, filter drivers), and, for a
+// worktree, its own config.worktree (read when extensions.worktreeConfig is on).
+// For the project's own sandbox, which also serves the worktrees that share it,
+// that means the config.worktree of every worktree, but only while the extension
+// is on: otherwise git ignores the files and protecting them would only change
+// the policy each time a worktree is added.
+func gitProtectedPaths(p *Project, worktreeConfig bool) []protectedPath {
+	gitDir := p.GitDir()
 	if st, err := os.Stat(gitDir); err != nil || !st.IsDir() {
 		return nil
 	}
+	names := []string{"hooks", "config"}
+	if p.IsWorktree() {
+		if admin := worktree.AdminDir(p.Root); admin != "" {
+			names = append(names, filepath.Join("worktrees", filepath.Base(admin), "config.worktree"))
+		}
+	} else if matches, _ := filepath.Glob(filepath.Join(gitDir, "worktrees", "*", "config.worktree")); worktreeConfig {
+		for _, m := range matches {
+			rel, _ := filepath.Rel(gitDir, m)
+			names = append(names, rel)
+		}
+	}
 	var out []protectedPath
-	for _, name := range []string{"hooks", "config"} {
+	for _, name := range names {
 		h := filepath.Join(gitDir, name)
 		if _, err := os.Stat(h); err == nil {
 			out = append(out, protectedPath{host: h, container: containerPath(h)})
@@ -417,6 +447,8 @@ func renderAgentsMD(c *config.Config, p *Project, mounts []mountInfo, mcp []mcpI
 		"ProjectDir":   p.Path,
 		"Persistent":   c.Sandbox.Lifetime == "persistent",
 		"WorktreesDir": strings.Trim(filepath.ToSlash(c.Sandbox.WorktreesDir), "/"),
+		"IsWorktree":   p.IsWorktree(),
+		"MainDir":      containerPath(p.RepoRoot()),
 		"NetworkText":  networkText(c),
 		"GitText":      gitText(c),
 		"Mounts":       mounts,
@@ -599,10 +631,11 @@ func policyHash(s backend.Spec, secret map[string]bool) string {
 		Env                     []string
 		Binds                   []backend.Bind
 		Volumes                 []backend.VolumeMount
+		Tmpfs                   map[string]string
 		Caps, SecOpt            []string
 		Mem, CPU, Pids          int64
 		Auto                    bool
-	}{s.Image, s.Network, s.Runtime, env, s.Binds, s.Volumes, s.CapAdd, s.SecurityOpt, s.MemoryBytes, s.NanoCPUs, s.Pids, s.AutoRemove}
+	}{s.Image, s.Network, s.Runtime, env, s.Binds, s.Volumes, s.Tmpfs, s.CapAdd, s.SecurityOpt, s.MemoryBytes, s.NanoCPUs, s.Pids, s.AutoRemove}
 	b, _ := json.Marshal(v)
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])[:16]

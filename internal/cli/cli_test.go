@@ -22,6 +22,10 @@ func TestParseArgs(t *testing.T) {
 		{[]string{"login", "anthropic", "opencode-go"}, "login", "", []string{"anthropic", "opencode-go"}},
 		{[]string{"config", "init"}, "config", "", []string{"init"}},
 		{[]string{"./shell"}, "start", "./shell", nil}, // a directory called "shell"
+		{[]string{"wt", "add", "feat"}, "wt", "", []string{"add", "feat"}},
+		{[]string{"wt"}, "wt", "", nil},
+		{[]string{"review", "12345", "focus", "on", "SQL"}, "wt", "", []string{"review", "12345", "focus", "on", "SQL"}},
+		{[]string{"wt", "review", "https://g.example.org/r/c/core/+/12345/3"}, "wt", "", []string{"review", "https://g.example.org/r/c/core/+/12345/3"}},
 	}
 	for _, c := range cases {
 		a, err := parseArgs(c.argv)
@@ -47,6 +51,53 @@ func TestParseArgsFlags(t *testing.T) {
 		if _, err := parseArgs(bad); err == nil {
 			t.Errorf("%v accepted", bad)
 		}
+	}
+}
+
+func TestParseArgsWorktreeFlags(t *testing.T) {
+	a, err := parseArgs([]string{"wt", "add", "feat", "-b", "release/1.2", "--from=origin/main", "--no-attach"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.command != "wt" || !reflect.DeepEqual(a.rest, []string{"add", "feat"}) || a.branch != "release/1.2" || a.from != "origin/main" || !a.noAttach {
+		t.Errorf("flags: %+v", a)
+	}
+	if _, err := parseArgs([]string{"wt", "add", "x", "-b"}); err == nil {
+		t.Error("-b without a value accepted")
+	}
+}
+
+func TestWorktreeIsolationDefaultsAndFlags(t *testing.T) {
+	cases := []struct {
+		mode   string
+		flags  []string
+		review bool
+		want   bool
+	}{
+		{"none", nil, false, false},
+		{"none", nil, true, false}, // the default: everything in one sandbox
+		{"reviews", nil, false, false},
+		{"reviews", nil, true, true},
+		{"all", nil, false, true},
+		{"all", nil, true, true},
+		{"none", []string{"--isolated"}, true, true},
+		{"all", []string{"--shared"}, true, false},
+		{"reviews", []string{"--shared"}, true, false},
+		{"reviews", []string{"--isolated"}, false, true},
+	}
+	for _, c := range cases {
+		a, err := parseArgs(append([]string{"wt", "add", "x"}, c.flags...))
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg := &config.Config{}
+		cfg.Sandbox.WorktreeIsolation = c.mode
+		if got := (&env{a: a}).isolate(cfg, c.review); got != c.want {
+			t.Errorf("mode %q flags %v review=%v: isolated = %v, want %v", c.mode, c.flags, c.review, got, c.want)
+		}
+	}
+	if def := config.Defaults(); def.Sandbox.WorktreeIsolation != "none" {
+		t.Errorf("default worktree_isolation = %q, want none", def.Sandbox.WorktreeIsolation)
 	}
 }
 

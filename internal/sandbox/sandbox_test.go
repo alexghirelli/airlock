@@ -85,22 +85,65 @@ func TestResolveFindsGitRootFromSubdirectory(t *testing.T) {
 	}
 }
 
-func TestResolveFromInsideAWorktreeUsesMainRepo(t *testing.T) {
-	root := mkRepo(t, filepath.Join(realTemp(t), "repo"))
-	wt := filepath.Join(root, ".worktrees", "w1")
-	if err := os.MkdirAll(wt, 0o755); err != nil {
-		t.Fatal(err)
+// mkWorktree fakes `git worktree add <root>/.worktrees/<name>` and resolves it.
+func mkWorktree(t *testing.T, root, name string) *Project {
+	t.Helper()
+	wt := filepath.Join(root, ".worktrees", name)
+	admin := filepath.Join(root, ".git", "worktrees", name)
+	for _, d := range []string{wt, admin} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
-	gitdir := filepath.Join(root, ".git", "worktrees", "w1")
-	if err := os.WriteFile(filepath.Join(wt, ".git"), []byte("gitdir: "+gitdir+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(wt, ".git"), []byte("gitdir: "+admin+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	p, err := Resolve(wt)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Root != root {
-		t.Errorf("worktree resolved to %q, want main repo %q", p.Root, root)
+	return p
+}
+
+func TestResolveFromInsideAWorktreeGivesTheWorktreeItsOwnProject(t *testing.T) {
+	root := mkRepo(t, filepath.Join(realTemp(t), "repo"))
+	main, err := Resolve(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wt := mkWorktree(t, root, "w1")
+	if want := filepath.Join(root, ".worktrees", "w1"); wt.Root != want {
+		t.Errorf("worktree resolved to %q, want %q", wt.Root, want)
+	}
+	if !wt.IsWorktree() || wt.Main != root || wt.RepoRoot() != root || wt.GitDir() != filepath.Join(root, ".git") {
+		t.Errorf("worktree project = %+v", wt)
+	}
+	if main.IsWorktree() || main.RepoRoot() != root {
+		t.Errorf("main project = %+v", main)
+	}
+	if wt.ContainerName() == main.ContainerName() || wt.ContainerName() == mkWorktree(t, root, "w2").ContainerName() {
+		t.Error("worktrees must not share a container with the main checkout or each other")
+	}
+	if !strings.HasPrefix(wt.Slug, "repo-w1-") {
+		t.Errorf("slug %q does not say which repository and worktree it is", wt.Slug)
+	}
+	if wt.FamilySlug() != main.Slug {
+		t.Errorf("family slug %q, want the main repository's %q", wt.FamilySlug(), main.Slug)
+	}
+	// From a subdirectory of the worktree it is still that worktree.
+	sub := filepath.Join(wt.Root, "src")
+	os.MkdirAll(sub, 0o755)
+	if p, err := Resolve(sub); err != nil || p.Root != wt.Root {
+		t.Errorf("subdirectory of a worktree: %+v, %v", p, err)
+	}
+}
+
+func TestSubmoduleIsNotTreatedAsAWorktree(t *testing.T) {
+	dir := realTemp(t)
+	os.WriteFile(filepath.Join(dir, ".git"), []byte("gitdir: ../.git/modules/sub\n"), 0o644)
+	p, err := Resolve(dir)
+	if err != nil || p.IsWorktree() || p.Root != dir {
+		t.Errorf("submodule: %+v, %v", p, err)
 	}
 }
 
@@ -124,6 +167,9 @@ func TestContainerPathWindows(t *testing.T) {
 	}
 }
 
+// testWorktreeConfig is what the stubbed `git config extensions.worktreeConfig` returns.
+var testWorktreeConfig string
+
 func testPlan(t *testing.T, userToml string, project *Project, env map[string]string) *Plan {
 	t.Helper()
 	dir := realTemp(t)
@@ -139,7 +185,7 @@ func testPlan(t *testing.T, userToml string, project *Project, env map[string]st
 		Project: project, Config: res, Image: "airlock:test",
 		Host: Host{UID: 1234, GID: 567, Getenv: func(k string) string { return env[k] },
 			GitConfig: func(_, k string) string {
-				return map[string]string{"user.name": "Ada", "user.email": "ada@example.org"}[k]
+				return map[string]string{"user.name": "Ada", "user.email": "ada@example.org", "extensions.worktreeConfig": testWorktreeConfig}[k]
 			}},
 	})
 	if err != nil {
@@ -300,7 +346,7 @@ func TestAgentsMDDescribesNetworkAndGitModes(t *testing.T) {
 		return ""
 	}
 	if a := get("", nil); !strings.Contains(a, "blocked by a firewall") || !strings.Contains(a, "cannot push") ||
-		!strings.Contains(a, "/.worktrees/<name>") {
+		!strings.Contains(a, "airlock wt") {
 		t.Errorf("default AGENTS.md:\n%s", a)
 	}
 	if a := get("[network]\nmode=\"open\"\n", nil); !strings.Contains(a, "No network restrictions") {
@@ -664,5 +710,220 @@ func TestConciseSkillShippedByDefaultAndSwitchable(t *testing.T) {
 	if _, ok := off["/etc/airlock/skills/concise/SKILL.md"]; ok || strings.Contains(off["/etc/airlock/pi.args"], "concise") ||
 		strings.Contains(off["/etc/airlock/AGENTS.md"], "Reply style") {
 		t.Error("agents.concise = false must remove the skill, the Pi argument and the section")
+	}
+}
+
+func TestMainSandboxHidesOnlyTheIsolatedWorktrees(t *testing.T) {
+	proj := newProject(t)
+	plan := testPlan(t, "", proj, nil)
+	hidden := proj.Path + "/.worktrees/.isolated"
+	opts, ok := plan.Spec.Tmpfs[hidden]
+	if !ok || !strings.HasPrefix(opts, "ro,") {
+		t.Fatalf("%s must be an empty read-only tmpfs, got %v", hidden, plan.Spec.Tmpfs)
+	}
+	if _, ok := plan.Spec.Tmpfs[proj.Path+"/.worktrees"]; ok {
+		t.Error("the shared worktrees must stay visible in the project's sandbox")
+	}
+	off := testPlan(t, "[sandbox]\nworktrees_dir=\"\"\n", proj, nil)
+	if len(off.Spec.Tmpfs) != 1 {
+		t.Errorf("nothing to hide when worktrees are disabled: %v", off.Spec.Tmpfs)
+	}
+	// Hiding them is part of the policy: sandboxes made before it must be recreated.
+	if plan.Policy == off.Policy {
+		t.Error("hiding the isolated folder does not change the policy hash")
+	}
+}
+
+func TestSettleSendsSharedWorktreesToTheProjectsSandbox(t *testing.T) {
+	root := mkRepo(t, filepath.Join(realTemp(t), "repo"))
+	main, _ := Resolve(root)
+	shared := mkWorktree(t, root, "feat")
+
+	// Isolated folder and a worktree elsewhere keep their own sandbox.
+	iso := filepath.Join(root, ".worktrees", ".isolated", "rev")
+	admin := filepath.Join(root, ".git", "worktrees", "rev")
+	os.MkdirAll(iso, 0o755)
+	os.MkdirAll(admin, 0o755)
+	os.WriteFile(filepath.Join(iso, ".git"), []byte("gitdir: "+admin+"\n"), 0o644)
+	isolated, err := Resolve(iso)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(realTemp(t), "elsewhere")
+	admin2 := filepath.Join(root, ".git", "worktrees", "elsewhere")
+	os.MkdirAll(outside, 0o755)
+	os.MkdirAll(admin2, 0o755)
+	os.WriteFile(filepath.Join(outside, ".git"), []byte("gitdir: "+admin2+"\n"), 0o644)
+	elsewhere, err := Resolve(outside)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := shared.Settle(".worktrees")
+	if got.IsWorktree() || got.Root != root || got.ContainerName() != main.ContainerName() || got.Cwd != shared.Root {
+		t.Errorf("shared worktree settled to %+v, want the project's sandbox with Cwd %s", got, shared.Root)
+	}
+	if got.WorkDir() != shared.Path || main.WorkDir() != main.Path {
+		t.Errorf("sessions start in %q (worktree) and %q (project)", got.WorkDir(), main.WorkDir())
+	}
+	for name, p := range map[string]*Project{"isolated": isolated, "elsewhere": elsewhere} {
+		if s := p.Settle(".worktrees"); s != p || !s.IsWorktree() {
+			t.Errorf("%s worktree must keep its own sandbox: %+v", name, s)
+		}
+	}
+	if s := shared.Settle(""); s != shared {
+		t.Error("with worktrees disabled nothing is shared")
+	}
+	if s := main.Settle(".worktrees"); s != main {
+		t.Error("the main checkout settles to itself")
+	}
+}
+
+func TestSharedWorktreesConfigFilesAreReadOnlyInTheProjectSandbox(t *testing.T) {
+	root := mkRepo(t, filepath.Join(realTemp(t), "repo"))
+	wt := mkWorktree(t, root, "feat")
+	cfg := filepath.Join(root, ".git", "worktrees", "feat", "config.worktree")
+	if err := os.WriteFile(cfg, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	main, _ := Resolve(root)
+	_ = wt
+	// Git ignores the file unless the extension is on, and then protecting it
+	// would only make the policy change whenever any worktree is added.
+	before := testPlan(t, "", main, nil)
+	if findBind(before, cfg) != nil {
+		t.Error("config.worktree protected although git does not read it")
+	}
+	testWorktreeConfig = "true"
+	t.Cleanup(func() { testWorktreeConfig = "" })
+	on := testPlan(t, "", main, nil)
+	if b := findBind(on, cfg); b == nil || !b.ReadOnly {
+		t.Errorf("config.worktree of a worktree must be read-only with the extension on: %+v", b)
+	}
+	if on.Policy == before.Policy {
+		t.Error("protecting it did not change the policy, so existing sandboxes would not be recreated")
+	}
+}
+
+func TestAddingAnIsolatedWorktreeDoesNotChangeTheProjectsPolicy(t *testing.T) {
+	root := mkRepo(t, filepath.Join(realTemp(t), "repo"))
+	main, _ := Resolve(root)
+	before := testPlan(t, "", main, nil).Policy
+	iso := filepath.Join(root, ".worktrees", ".isolated", "rev")
+	admin := filepath.Join(root, ".git", "worktrees", "rev")
+	os.MkdirAll(iso, 0o755)
+	os.MkdirAll(admin, 0o755)
+	os.WriteFile(filepath.Join(iso, ".git"), []byte("gitdir: "+admin+"\n"), 0o644)
+	p, err := Resolve(iso)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := PrepareHost(p, ".worktrees"); err != nil { // creates config.worktree for the worktree
+		t.Fatal(err)
+	}
+	if after := testPlan(t, "", main, nil).Policy; after != before {
+		t.Error("creating an isolated worktree makes the project's sandbox look out of date")
+	}
+}
+
+func TestPrepareHostCreatesTheIsolatedFolder(t *testing.T) {
+	proj := newProject(t)
+	if _, err := PrepareHost(proj, ".worktrees"); err != nil {
+		t.Fatal(err)
+	}
+	if st, err := os.Stat(filepath.Join(proj.Root, ".worktrees", ".isolated")); err != nil || !st.IsDir() {
+		t.Errorf("the isolated folder is missing (the tmpfs that hides it needs a target): %v", err)
+	}
+}
+
+func TestWorktreeSandboxSeesOnlyItselfAndTheGitDirectory(t *testing.T) {
+	root := mkRepo(t, filepath.Join(realTemp(t), "repo"))
+	wt := mkWorktree(t, root, "review-1")
+	mkWorktree(t, root, "feature") // a sibling
+	os.WriteFile(filepath.Join(root, ".env"), []byte("SECRET=1"), 0o644)
+
+	plan := testPlan(t, "", wt, nil)
+	if plan.Spec.Name == "" || plan.Spec.WorkDir != wt.Path {
+		t.Errorf("name %q workdir %q", plan.Spec.Name, plan.Spec.WorkDir)
+	}
+	if b := findBind(plan, wt.Path); b == nil || b.Source != wt.Root || b.ReadOnly {
+		t.Errorf("the worktree itself must be mounted read-write: %+v", b)
+	}
+	gitDir := filepath.Join(root, ".git")
+	if b := findBind(plan, gitDir); b == nil || b.Source != gitDir || b.ReadOnly {
+		t.Errorf("the shared git directory must be mounted (its .git file points there): %+v", b)
+	}
+	for _, name := range []string{"hooks", "config"} {
+		if b := findBind(plan, filepath.Join(gitDir, name)); b == nil || !b.ReadOnly {
+			t.Errorf(".git/%s must be read-only: %+v", name, b)
+		}
+	}
+	for _, bind := range plan.Spec.Binds {
+		if bind.Source == root {
+			t.Errorf("the main checkout is mounted: %+v", bind)
+		}
+		if strings.HasPrefix(bind.Source, filepath.Join(root, ".worktrees", "feature")) {
+			t.Errorf("a sibling worktree is mounted: %+v", bind)
+		}
+	}
+	if _, ok := plan.Spec.Tmpfs[wt.Path+"/.worktrees"]; ok {
+		t.Error("a worktree has no worktrees directory to hide")
+	}
+	agents := ""
+	for _, f := range plan.Files {
+		if f.Path == "/etc/airlock/AGENTS.md" {
+			agents = string(f.Data)
+		}
+	}
+	if !strings.Contains(agents, "### Worktree\n") || !strings.Contains(agents, "`"+root+"`") {
+		t.Errorf("AGENTS.md does not describe the worktree:\n%s", agents)
+	}
+}
+
+func TestWorktreeConfigFileIsReadOnlyToo(t *testing.T) {
+	root := mkRepo(t, filepath.Join(realTemp(t), "repo"))
+	wt := mkWorktree(t, root, "w")
+	if _, err := PrepareHost(wt, ".worktrees"); err != nil {
+		t.Fatal(err)
+	}
+	cfg := filepath.Join(root, ".git", "worktrees", "w", "config.worktree")
+	if !fileExists(cfg) {
+		t.Fatal("PrepareHost must create config.worktree so it can be protected")
+	}
+	if b := findBind(testPlan(t, "", wt, nil), cfg); b == nil || !b.ReadOnly {
+		t.Errorf("config.worktree (core.hooksPath, core.fsmonitor) must be read-only: %+v", b)
+	}
+}
+
+func TestWorktreeSharesTheProjectsCredentialsVolume(t *testing.T) {
+	root := mkRepo(t, filepath.Join(realTemp(t), "repo"))
+	main, _ := Resolve(root)
+	wt := mkWorktree(t, root, "w")
+	vol := func(p *Project) string {
+		for _, v := range testPlan(t, "[credentials]\nscope=\"per-project\"\n", p, nil).Spec.Volumes {
+			if v.Target == "/creds" {
+				return v.Name
+			}
+		}
+		return ""
+	}
+	if vol(main) == "" || vol(main) != vol(wt) {
+		t.Errorf("creds volumes differ: main %q, worktree %q (logging in again per worktree would be tedious)", vol(main), vol(wt))
+	}
+}
+
+func TestWorktreeFallsBackToTheMainAirlockignore(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", realTemp(t))
+	root := mkRepo(t, filepath.Join(realTemp(t), "repo"))
+	wt := mkWorktree(t, root, "w")
+	os.WriteFile(filepath.Join(root, ".airlockignore"), []byte("*.pem\n"), 0o644)
+	os.WriteFile(filepath.Join(wt.Root, "k.pem"), []byte("k"), 0o644)
+	masks, _ := ignoreMasks(wt)
+	found := false
+	for _, b := range masks {
+		found = found || b.Target == wt.Path+"/k.pem"
+	}
+	if !found {
+		t.Errorf("k.pem not masked in the worktree: %+v", masks)
 	}
 }

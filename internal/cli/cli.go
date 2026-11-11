@@ -28,6 +28,12 @@ Usage:
   airlock stop [path]          stop the sandbox (installed tools are kept)
   airlock restart [path]       stop and start again, to apply a changed config
   airlock rm [path]            delete the sandbox
+  airlock wt add <name> [focus...]   a worktree on a new or existing branch (-b, --from)
+  airlock review <change> [focus...] a Gerrit patchset on a local branch review/<change>
+                               (12345, 12345/3 or the change URL); same as wt review
+  airlock wt open <name>       come back to a worktree
+  airlock wt focus <name> [text]  show / set / clear (text "") what its agent concentrates on
+  airlock wt [ls] | rm <name>  list worktrees / remove one (--force with changes)
   airlock ls                   list sandboxes
   airlock login [--reset]      log in to the configured providers
   airlock build | update       build the image / rebuild with the latest pinned versions
@@ -46,6 +52,12 @@ Flags:
   --network <mode>   open-no-lan | allowlist | open
   --ephemeral        throw the sandbox away when the session ends
   --recreate         recreate the sandbox if its fixed settings changed
+  -b, --branch <b>   wt add/review: the branch to use (default: the name / review/<change>)
+  --from <ref>       wt add: where a new branch starts (default HEAD)
+  --no-attach        wt add/review/open: prepare the sandbox but do not attach
+  --shared           wt add/review: use the project's sandbox, a Herdr workspace each
+  --isolated         wt add/review: give the worktree a sandbox of its own
+                     (the default comes from sandbox.worktree_isolation)
   --remote <host>    run the command on a remote machine over ssh
   --config <file>    use this user config file
   --json             machine-readable output (ls, doctor, audit)
@@ -55,7 +67,7 @@ Flags:
 
 // commands maps a first word to a command; anything else is a project path.
 var commands = map[string]bool{
-	"shell": true, "exec": true, "stop": true, "restart": true, "mcp": true, "rm": true, "ls": true, "login": true,
+	"wt": true, "review": true, "shell": true, "exec": true, "stop": true, "restart": true, "mcp": true, "rm": true, "ls": true, "login": true,
 	"build": true, "update": true, "doctor": true, "audit": true, "config": true,
 	"version": true, "help": true,
 }
@@ -79,6 +91,11 @@ type args struct {
 	force     bool
 	accept    bool
 	ifMissing bool
+	noAttach  bool
+	shared    bool
+	isolated  bool
+	branch    string
+	from      string
 	help      bool
 }
 
@@ -124,6 +141,16 @@ func parseArgs(argv []string) (*args, error) {
 				a.accept = true
 			case "--if-missing":
 				a.ifMissing = true
+			case "--no-attach":
+				a.noAttach = true
+			case "--shared":
+				a.shared = true
+			case "--isolated":
+				a.isolated = true
+			case "--branch", "-b":
+				a.branch, err = value(&i, name, inline, hasInline)
+			case "--from":
+				a.from, err = value(&i, name, inline, hasInline)
 			case "--help", "-h":
 				a.help = true
 			case "--ui":
@@ -149,8 +176,12 @@ func parseArgs(argv []string) (*args, error) {
 		}
 		positional = append(positional, arg)
 	}
+	if a.command == "review" { // airlock review 12345 is airlock wt review 12345
+		a.command = "wt"
+		positional = append([]string{"review"}, positional...)
+	}
 	switch a.command {
-	case "config", "login", "mcp":
+	case "config", "login", "mcp", "wt":
 		a.rest = append(positional, a.rest...)
 	default:
 		if len(positional) > 1 {
@@ -247,6 +278,8 @@ func (e *env) run(ctx context.Context) (int, error) {
 		return e.cmdDoctor(ctx)
 	case "audit":
 		return e.cmdAudit(ctx)
+	case "wt":
+		return e.cmdWt(ctx)
 	}
 	return 2, fmt.Errorf("unknown command %q", e.a.command)
 }
@@ -272,11 +305,12 @@ func (e *env) load() (*loaded, error) {
 	if err != nil {
 		return nil, err
 	}
-	res, err := config.Load(config.LoadOptions{ProjectDir: p.Root, UserConfigPath: e.a.cfgFile, Flags: e.flags()})
+	res, err := config.Load(config.LoadOptions{ProjectDir: p.RepoRoot(), UserConfigPath: e.a.cfgFile, Flags: e.flags()})
 	if err != nil {
 		return nil, err
 	}
-	return &loaded{project: p, res: res}, nil
+	// Which sandbox a worktree uses depends on where the configuration puts them.
+	return &loaded{project: p.Settle(res.Config.Sandbox.WorktreesDir), res: res}, nil
 }
 
 // loadUser loads the configuration without a project.

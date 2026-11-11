@@ -42,16 +42,27 @@ Report what you installed so the user can bake it into a project image later.
 ## Git
 
 {{.GitText}}
-{{if .WorktreesDir}}
+{{if .IsWorktree}}
+### Worktree
+
+This is a linked git worktree of `{{.MainDir}}`, in a sandbox of its own: the main
+checkout and the other worktrees are not here. The git directory is shared with
+them, so branches, tags and stashes are too. Work on the branch checked out here;
+do not delete, reset or rewrite other branches, and do not run `git worktree
+prune`/`remove` or `git gc --prune=now`.
+{{else if .WorktreesDir}}
 ### Worktrees
 
-Use `git worktree` for parallel or risky work. Create worktrees only under
-`{{.ProjectDir}}/{{.WorktreesDir}}/<name>`, one branch per worktree:
+Parallel work lives in git worktrees under `{{.ProjectDir}}/{{.WorktreesDir}}/<name>`, one
+branch each. The user opens them with `airlock wt`, each in its own Herdr workspace;
+you can also make one:
 
     git worktree add {{.WorktreesDir}}/<name> -b <branch>
 
-That directory is excluded from git. Remove a worktree with `git worktree remove`
-when its work is merged or abandoned.
+Work in the worktree you were started in, and leave the others alone. A worktree
+may come with a task, which is added to your instructions when Pi starts in it.
+Remove a worktree with `git worktree remove` when its work is merged or abandoned.
+Some worktrees run in sandboxes of their own and are not visible here.
 {{end}}
 ## Files that run on the user's computer
 

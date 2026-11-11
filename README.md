@@ -54,6 +54,7 @@ airlock [path]               start or resume the sandbox for a project and attac
 airlock shell [path]         open a shell in it
 airlock exec [path] -- cmd   run a command in it
 airlock stop|rm [path]       stop it (tools stay) / delete it
+airlock wt add|open|focus|rm | airlock review <change>   worktrees and Gerrit reviews
 airlock ls                   list sandboxes
 airlock login                log in to the providers named in your config
 airlock audit [path]         report changes to files that run on your computer
@@ -69,6 +70,8 @@ airlock --remote <ssh-host> <command>
 - The project is mounted **at the same absolute path** as on the host, so git
   worktrees (which store absolute paths) work from both sides. Files you and the
   agent create are owned by you.
+- Git worktrees share the project's sandbox, each as a Herdr workspace, or get a sandbox
+  of their own (see [Worktrees](#worktrees-parallel-work-and-gerrit-reviews)).
 - Network `open-no-lan` (default): the internet works; your computer, your LAN,
   link-local/metadata addresses and other sandboxes are blocked by a firewall
   that the agent cannot change (see [Security model](#security-model)).
@@ -76,6 +79,79 @@ airlock --remote <ssh-host> <command>
   Node/Python/Go/Ruby. Installed tools persist until `airlock rm`.
 - Pi logins and settings live in a Docker volume, shared by all projects
   (`credentials.scope = "shared"`) or per project.
+
+## Worktrees: parallel work and Gerrit reviews
+
+Work on several branches at once, one git worktree each, and review Gerrit patches
+next to your own feature. By default every worktree shows up as a **Herdr workspace in
+the same session**, so you switch between them without opening terminals.
+
+```sh
+airlock wt add rate-limit "rate limiting of the API, only includes/api/"
+airlock review 12345                       # the latest patchset of Gerrit change 12345
+airlock review https://gerrit.example.org/r/c/core/+/12345/3 "check the SQL"
+airlock wt                                 # worktrees, branches, changes, sandboxes, focus
+airlock wt open rate-limit                 # come back to one
+airlock wt focus rate-limit "now: the tests"   # change what its agent concentrates on
+airlock wt rm review-12345                 # remove the worktree, keep the branch
+```
+
+- `add` creates the worktree under `.worktrees/` (git-excluded) on a new branch from
+  `HEAD` (`-b` to name it or use an existing or remote branch, `--from` to start
+  elsewhere). `review` fetches `refs/changes/NN/12345/P` **on the host**, where your
+  Gerrit credentials are, and checks it out on a **local branch** `review/12345`, so
+  a review can include changes of your own. Run it again and the branch moves to the
+  newest patchset, unless that would lose uncommitted changes or local commits: then it
+  says so and prints the `git rebase --onto` to run. The remote is `gerrit` if the
+  repository has one, otherwise `origin`; `git.gerrit_remote` changes it.
+- Both start the sandbox and attach. From another terminal, `--no-attach` adds the
+  workspace to the Herdr session that is already open.
+- **A task per worktree.** Text after the name or change is the worktree's *focus*.
+  A review also gets a task of its own, written from the fetched commit: the change,
+  the patchset, the subject and the author, with the rules of a review (no push, no
+  edits unless asked, findings by file) and a pointer to the Gerrit tools for comments.
+  Pi reads both every time it starts in the worktree, so every new session there has
+  its scope, and `wt focus` applies to the next one. They are files in the worktree's
+  git directory, not in the checkout, so they never show in `git status`.
+
+### Keeping a worktree apart
+
+A sandbox is the boundary, not a folder: agents in the same sandbox can read and write
+each other's worktrees, and the project's untracked files (a `LocalSettings.php` with
+database credentials, say). That is fine for your own branches; it is a risk for a
+patch from someone else, because instructions hidden in it may steer the agent that
+reads it. So a worktree can have a sandbox of its own:
+
+```toml
+[sandbox]
+worktree_isolation = "none"      # none (default) | reviews | all
+```
+
+| Value | `wt add` | `review` |
+|---|---|---|
+| `none` | project sandbox, Herdr workspace | project sandbox, Herdr workspace |
+| `reviews` | project sandbox | **own sandbox** |
+| `all` | own sandbox | own sandbox |
+
+`--shared` and `--isolated` override the setting for one worktree. An isolated worktree
+lives in `.worktrees/.isolated/`, mounts only itself and the repository's `.git`
+(hooks, config and its own `config.worktree` read-only), and has its own terminal and
+Herdr: the main checkout, its untracked files and every other worktree are not visible,
+and a port used there does not clash with yours. The project's sandbox sees
+`.worktrees/.isolated/` as an empty read-only folder.
+
+- `airlock` run inside a worktree resolves to the sandbox it belongs to; that means
+  `airlock stop|rm` in a shared worktree acts on the project's sandbox.
+- A worktree builds the **main repository's** configuration and project image, never its
+  own: a patch under review cannot change how its own sandbox is built.
+- Worktrees made by `airlock wt` are locked, so a `git worktree prune` run where they
+  look missing (the project's sandbox does not see isolated ones) cannot forget them.
+- Agents can make worktrees under `.worktrees/` themselves; they land in the project's
+  sandbox. Isolated ones are made with `airlock wt` on the host.
+
+What worktrees still share is the git directory: objects, branches and tags. An agent in
+an isolated worktree can rewrite refs of other branches. It cannot read or change their
+files. See [Security model](#security-model).
 
 ## Configuration
 
@@ -213,6 +289,13 @@ What it does **not** protect against:
 - Anything you hand over: a read-write mount can be modified, a mounted `~/.aws`
   is readable, a `push` token can push, environment variables are visible to every
   process in the box (and in `docker inspect`).
+- **Worktrees in the same sandbox are not kept apart.** By default they all share the
+  project's sandbox, so an agent reviewing a patch can read and change your other
+  worktrees and the project's untracked files. Set `sandbox.worktree_isolation` to
+  give reviews (or every worktree) a sandbox of their own.
+- **Worktrees share one git directory**, isolated or not. An agent in one can create,
+  move or delete branches and tags that the others (and you) see, and add objects to
+  the shared store. Review what a sandbox committed before you push it.
 - With `credentials.scope = "shared"`, any sandbox on the machine can read the
   provider logins. `per-project` isolates them. `airlock login --reset` wipes them.
 - The toolchain volume is shared between projects.
@@ -246,7 +329,7 @@ AIRLOCK_IT_SLOW=1 go test -tags integration -run Packages ./tests/...   # the sl
 The integration tests build the image once (about three minutes the first time) and
 then take about a minute. They cover: isolation (with a positive control, so a
 missing firewall would be noticed), capability dropping, ownership, protected git
-files, worktrees, untrusted project config, same-name projects, mounts,
+files, worktrees (one sandbox each, none seeing another), untrusted project config, same-name projects, mounts,
 persistence, Herdr attach/detach/reattach through a real pseudo-terminal,
 `.airlockignore`, `audit`, git modes and `doctor`. The test that installs Pi
 packages and Claude Code is opt-in (`AIRLOCK_IT_SLOW=1`).

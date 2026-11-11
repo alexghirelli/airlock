@@ -30,6 +30,10 @@ func StateDir() string {
 // appear later are not hidden until it is recreated.
 func ignoreMasks(p *Project) ([]backend.Bind, []string) {
 	f, err := os.Open(filepath.Join(p.Root, IgnoreFile))
+	if err != nil && p.IsWorktree() {
+		// A worktree may not have it (untracked there): use the main repository's.
+		f, err = os.Open(filepath.Join(p.Main, IgnoreFile))
+	}
 	if err != nil {
 		return nil, nil
 	}
