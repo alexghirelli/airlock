@@ -58,6 +58,9 @@ type Git struct {
 	Mode     string   `toml:"mode"`      // local | push
 	TokenEnv string   `toml:"token_env"` // host env var holding the token (push mode)
 	Hosts    []string `toml:"hosts"`     // hosts the token is offered to (push mode)
+	// GerritRemote is the remote `airlock wt review` fetches refs/changes from.
+	// Empty means "gerrit" if the repository has such a remote, else "origin".
+	GerritRemote string `toml:"gerrit_remote"`
 }
 
 type Pi struct {

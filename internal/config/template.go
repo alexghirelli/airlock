@@ -28,6 +28,7 @@ scope = "shared"                 # shared (one login volume for all projects) | 
 mode = "local"                   # local | push
 token_env = ""                   # host env var holding a token, used only when mode = "push"
 hosts = ["github.com"]           # hosts the token is offered to
+gerrit_remote = ""               # remote that "airlock wt review" fetches from (empty = "gerrit" if it exists, else "origin")
 
 [pi]
 version = "latest-pinned"        # or an exact version such as "1.5.2"

@@ -86,6 +86,9 @@ func (c *Config) Validate() error {
 	if c.Git.Mode == "push" && c.Git.TokenEnv == "" {
 		add(errors.New("git.token_env must be set when git.mode = \"push\""))
 	}
+	if strings.HasPrefix(c.Git.GerritRemote, "-") || strings.ContainsAny(c.Git.GerritRemote, " \t\n") {
+		add(fmt.Errorf("git.gerrit_remote: %q is not a remote name", c.Git.GerritRemote))
+	}
 	if c.Git.TokenEnv != "" && !envNameRe.MatchString(c.Git.TokenEnv) {
 		add(fmt.Errorf("git.token_env: %q is not an environment variable name", c.Git.TokenEnv))
 	}
