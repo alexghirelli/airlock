@@ -22,10 +22,8 @@ work=/tmp/airlock-demo
 "$bin" rm "$work/myapp" >/dev/null 2>&1 || true
 rm -rf "$work"
 cleanup() {
-  # airlock rm keeps a per-project credentials volume; this one is the demo's own.
-  vols="$(docker ps -a -q --filter "label=io.airlock.project=$work/myapp" | xargs -r docker inspect --format '{{range .Mounts}}{{.Name}} {{end}}' 2>/dev/null | tr ' ' '\n' | grep '^airlock-creds-myapp-' || true)"
-  "$bin" rm "$work/myapp" >/dev/null 2>&1 || true
-  [[ -z "$vols" ]] || docker volume rm $vols >/dev/null 2>&1 || true
+  # --purge also deletes the demo's own credentials volume (see AIRLOCK_CREDENTIALS_SCOPE below)
+  AIRLOCK_CREDENTIALS_SCOPE=per-project "$bin" rm --purge "$work/myapp" >/dev/null 2>&1 || true
   rm -rf "$work"
 }
 trap cleanup EXIT
