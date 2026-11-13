@@ -69,6 +69,7 @@ airlock exec [path] -- cmd   run a command in it
 airlock stop|rm [path]       stop it (tools stay) / delete it (--purge: and its own logins)
 airlock wt add|open|focus|rm | airlock review <change>   worktrees and Gerrit reviews
 airlock ls                   list sandboxes
+airlock gc [--force]         list (--force: remove) what deleted projects and old releases left behind
 airlock login                log in to the providers named in your config
 airlock audit [path]         report changes to files that run on your computer
 airlock doctor               check the runtime, the firewall and the setup
@@ -109,6 +110,7 @@ airlock wt                                 # worktrees, branches, changes, sandb
 airlock wt open rate-limit                 # come back to one
 airlock wt focus rate-limit "now: the tests"   # change what its agent concentrates on
 airlock wt rm review-12345                 # remove the worktree, keep the branch
+airlock wt prune                           # list worktrees whose folder you deleted by hand (--force forgets them)
 ```
 
 - `add` creates the worktree under `.worktrees/` (git-excluded) on a new branch from
@@ -299,6 +301,33 @@ the sandbox rather than assuming them.
 sandbox: matching files appear empty and read-only. Files created later are not
 hidden until the sandbox is recreated.
 
+### Cleaning up
+
+`airlock gc` lists what is left behind, and `airlock gc --force` removes it:
+
+- sandboxes whose project folder no longer exists (a deleted project or worktree);
+- the credentials volume of such a project (`credentials.scope = "per-project"`;
+  volumes made before this version are not labelled and are never touched, remove
+  those with `airlock rm --purge` in their project);
+- `airlock:` images of older releases that no sandbox uses.
+
+The shared logins, the tools volume, your project files and anything that is still
+in use are never collected. Without `--force` it only lists. `airlock wt prune`
+does the same for worktrees whose folder you deleted by hand (their branches stay).
+
+To stop sandboxes nobody uses, set `idle_stop` in your user config:
+
+```toml
+[sandbox]
+idle_stop = "2h"                 # at least 5m; empty = never (the default)
+```
+
+A sandbox stops after that long with no terminal attached and no agent working.
+`airlock` starts it again, and the agents continue their conversations (see
+[Agents](#agents-use-the-one-you-prefer)). Anything else running in it stops too,
+a dev server for one. The setting applies the next time the sandbox starts
+(`airlock restart`).
+
 ### Example setups
 
 1. **Anthropic API key**: `default_model = "anthropic/<id>"`, run `airlock login`.
@@ -326,6 +355,15 @@ folder per version, so projects share the download and can use different version
 Claude Code comes from Anthropic's own installer and Pi from npm. Nothing is baked
 into the image, which also keeps it free of anything that cannot be redistributed.
 Then run `airlock login` once.
+
+**Closing a workspace does not lose the conversation.** Pi and Claude Code keep their
+sessions in the credentials volume, one per folder. When a workspace is opened again
+(`airlock wt open`, a worktree that had been closed, a sandbox that was stopped or
+recreated), the agent starts with `--continue` and picks up the last conversation of
+that folder; a folder without one starts fresh. `--fresh` starts a new conversation
+for one run (`airlock wt open rate-limit --fresh`) and `agent.resume = false` turns
+the continuing off. A worktree has its own conversation, separate from the project's
+and from every other worktree's, and a team (`--team`) always starts fresh.
 
 What airlock does for you depends on the agent:
 
