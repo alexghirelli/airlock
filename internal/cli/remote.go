@@ -26,7 +26,7 @@ func runRemote(e *env, argv []string) int {
 		fmt.Fprintf(e.stderr, "airlock: invalid remote host %q\n", e.a.remote)
 		return 2
 	}
-	ssh, err := exec.LookPath("ssh")
+	ssh, err := sshPath()
 	if err != nil {
 		fmt.Fprintln(e.stderr, "airlock: --remote needs the ssh client on this machine")
 		return 1
