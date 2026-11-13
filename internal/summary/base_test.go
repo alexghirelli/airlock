@@ -9,7 +9,7 @@ import (
 func TestCollectPushedFeatureBranchIgnoresItsOwnCopy(t *testing.T) {
 	p := newProject(t)
 	testGit(t, p.wt, "push", "-q", "-u", "origin", "feat")
-	s, err := Collect(p.wt, "feat")
+	s, err := Collect(p.main, p.wt, "feat", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +33,7 @@ func TestCollectDetachedHead(t *testing.T) {
 	dir := soloRepo(t)
 	testGit(t, dir, "checkout", "-q", "--detach")
 	commitFile(t, dir, "b.txt", "two\n")
-	s, err := Collect(dir, "")
+	s, err := Collect(dir, dir, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestCollectUnrelatedHistories(t *testing.T) {
 	dir := soloRepo(t)
 	testGit(t, dir, "checkout", "-q", "--orphan", "other")
 	commitFile(t, dir, "x.txt", "orphan\n")
-	s, err := Collect(dir, "")
+	s, err := Collect(dir, dir, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestCollectUnrelatedHistories(t *testing.T) {
 func TestCollectLeavesTheCheckoutAlone(t *testing.T) {
 	dir := soloRepo(t)
 	before := testGit(t, dir, "status", "--porcelain", "--ignored")
-	if _, err := Collect(dir, ""); err != nil {
+	if _, err := Collect(dir, dir, "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if after := testGit(t, dir, "status", "--porcelain", "--ignored"); after != before {
@@ -75,7 +75,7 @@ func TestCollectIgnoresGitConfigFromTheEnvironment(t *testing.T) {
 	t.Setenv("GIT_CONFIG_KEY_0", "core.abbrev")
 	t.Setenv("GIT_CONFIG_VALUE_0", "40")
 	t.Setenv("GIT_CONFIG_PARAMETERS", "'core.abbrev=39'")
-	s, err := Collect(p.wt, "feat")
+	s, err := Collect(p.main, p.wt, "feat", "")
 	if err != nil {
 		t.Fatal(err)
 	}

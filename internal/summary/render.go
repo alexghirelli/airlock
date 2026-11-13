@@ -23,7 +23,7 @@ func (s *Summary) Text() string {
 		fmt.Fprintf(&b, "focus: %s\n", show(s.Focus))
 	}
 	if s.Review {
-		b.WriteString("review brief: airlock-review.md\n")
+		b.WriteString("review brief: from airlock review (its task file)\n")
 	}
 	if s.BaseRef != "" {
 		fmt.Fprintf(&b, "%s\n", plural(s.CommitCount, "commit"))
@@ -89,7 +89,7 @@ func (s *Summary) Markdown() string {
 		fenced(&b, s.Focus)
 	}
 	if s.Review {
-		b.WriteString("\n## Review\n\nA review brief from `airlock review` is in the worktree (airlock-review.md).\n")
+		b.WriteString("\n## Review\n\nA review brief from `airlock review` was written for this worktree; the agent gets it in its instructions.\n")
 	}
 
 	b.WriteString("\n## Commits\n\n")

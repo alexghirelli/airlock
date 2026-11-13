@@ -348,6 +348,11 @@ func (m *Manager) Up(ctx context.Context) (created bool, err error) {
 	if err != nil {
 		return false, err
 	}
+	// The task folder is a bind source: it must exist (and be the host's) before
+	// the container is created, or the engine creates it as root.
+	if err := os.MkdirAll(plan.TasksDir, 0o755); err != nil {
+		return false, fmt.Errorf("task files: %w", err)
+	}
 	for _, w := range append(hostWarn, plan.Warnings...) {
 		m.logf("airlock: warning: %s", w)
 	}

@@ -21,19 +21,23 @@ var (
 // wtHandoff hands a worktree over to a new agent (the same kind, or --agent) that
 // starts with a briefing: what the worktree changed, the user's note, and where
 // the previous conversation is. The previous agent must not be working (--force
-// overrides). The briefing stays in the worktree's git directory until the next
+// overrides). The briefing stays in the worktree's task folder until the next
 // handoff or until the worktree is removed; --reset deletes it.
 //
 // The sandbox is brought up but no agent is started before the previous one is
 // looked at: starting one only to replace it would resume its conversation for
 // nothing.
 func (e *env) wtHandoff(ctx context.Context, repo *worktree.Repo, l *loaded, name, note string) (int, error) {
-	path, _, ok := repo.Find(name)
+	path, isolated, ok := repo.Find(name)
 	if !ok {
 		return 1, fmt.Errorf("no worktree %q: a handoff is for a worktree, not the project (see airlock wt ls)", name)
 	}
+	tasks, err := repo.TasksOf(name, isolated)
+	if err != nil {
+		return 1, err
+	}
 	if e.a.reset {
-		if err := worktree.ClearHandoff(repo.Root, path); err != nil {
+		if err := worktree.ClearHandoff(tasks); err != nil {
 			return 1, err
 		}
 		e.errf("airlock: removed the handoff briefing of %s", name)
@@ -66,13 +70,13 @@ func (e *env) wtHandoff(ctx context.Context, repo *worktree.Repo, l *loaded, nam
 		name: name, path: path, note: note, kind: wl.res.Config.Agent.Kind, force: e.a.force,
 		agents: func(ctx context.Context) ([]inbox.Raw, error) { return herdrAgents(ctx, b, m.Name()) },
 		brief: func() (string, error) {
-			s, err := summary.Collect(path, name)
+			s, err := summary.Collect(repo.Root, path, name, tasks)
 			if err != nil {
 				return "", err
 			}
 			return s.Markdown(), nil
 		},
-		write:   func(text string) error { return worktree.WriteHandoff(repo.Root, path, text) },
+		write:   func(text string) error { return worktree.WriteHandoff(tasks, text) },
 		closeWS: func(ctx context.Context) error { return e.closeWorkspace(ctx, b, l, path) },
 		start: func(ctx context.Context) (int, error) {
 			e.a.fresh = true // the new agent starts a new conversation, with the briefing
@@ -125,14 +129,15 @@ func (h handoffRun) run(ctx context.Context) (int, error) {
 		p := handoff.Describe(prev)
 		br.Previous = &p
 	}
-	// The briefing is written before the close: the new agent reads it at its start.
-	if err := h.write(handoff.Render(br)); err != nil {
-		return 1, err
-	}
+	// The briefing is written once the previous agent is confirmed gone, just
+	// before the new one starts, so a close that fails leaves the old briefing as it was.
 	if err := h.closeWS(ctx); err != nil {
 		return 1, err
 	}
 	if err := h.verifyGone(ctx); err != nil {
+		return 1, err
+	}
+	if err := h.write(handoff.Render(br)); err != nil {
 		return 1, err
 	}
 	h.log("airlock: handing %s over to a new %s agent", h.name, h.kind)
@@ -163,7 +168,7 @@ func (h handoffRun) verifyGone(ctx context.Context) error {
 		}
 	}
 	if last != nil {
-		return fmt.Errorf("could not confirm that the previous agent in %s is gone (%v); the briefing is written, close it in Herdr and rerun", h.name, last)
+		return fmt.Errorf("could not confirm that the previous agent in %s is gone (%v); no briefing was written, close it in Herdr and rerun", h.name, last)
 	}
-	return fmt.Errorf("the previous agent is still running in %s; the briefing is written, close it in Herdr and rerun", h.name)
+	return fmt.Errorf("the previous agent is still running in %s; no briefing was written, close it in Herdr and rerun", h.name)
 }

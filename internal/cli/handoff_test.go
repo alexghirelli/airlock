@@ -130,7 +130,7 @@ func TestHandoffForceOverridesWorking(t *testing.T) {
 	if _, err := fx.run.run(context.Background()); err != nil {
 		t.Fatalf("--force: %v", err)
 	}
-	want := []string{"agents", "brief", "write", "close", "agents", "start"}
+	want := []string{"agents", "brief", "close", "agents", "write", "start"}
 	if !reflect.DeepEqual(fx.steps, want) {
 		t.Errorf("steps = %q, want %q", fx.steps, want)
 	}
@@ -139,14 +139,14 @@ func TestHandoffForceOverridesWorking(t *testing.T) {
 	}
 }
 
-// The briefing is written before the workspace is closed, and the new agent
-// starts only after the close is confirmed.
+// The briefing is written once the workspace is closed and the close is
+// confirmed, and the new agent starts only after that.
 func TestHandoffOrderAndConfirmedClose(t *testing.T) {
 	fx := newHandoffFixture(idleHerdr, false, true)
 	if _, err := fx.run.run(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"agents", "brief", "write", "close", "agents", "start"}
+	want := []string{"agents", "brief", "close", "agents", "write", "start"}
 	if !reflect.DeepEqual(fx.steps, want) {
 		t.Errorf("steps = %q, want %q", fx.steps, want)
 	}
@@ -170,8 +170,8 @@ func TestHandoffWithoutPreviousAgent(t *testing.T) {
 	}
 }
 
-// When the agent is still listed after the close, nothing is started; the
-// briefing is already on disk for the next try.
+// When the agent is still listed after the close, nothing is started and no
+// briefing is written: the next try writes it once the agent is gone.
 func TestHandoffStopsWhenPreviousAgentSurvivesTheClose(t *testing.T) {
 	fx := newHandoffFixture(idleHerdr, false, false)
 	_, err := fx.run.run(context.Background())
@@ -183,12 +183,12 @@ func TestHandoffStopsWhenPreviousAgentSurvivesTheClose(t *testing.T) {
 			t.Errorf("the new agent was started over a running one: %q", fx.steps)
 		}
 	}
-	want := []string{"agents", "brief", "write", "close", "agents", "agents", "agents"}
+	want := []string{"agents", "brief", "close", "agents", "agents", "agents"}
 	if !reflect.DeepEqual(fx.steps, want) {
 		t.Errorf("steps = %q, want %q", fx.steps, want)
 	}
-	if fx.briefing == "" {
-		t.Error("the briefing was not written before the close")
+	if fx.briefing != "" {
+		t.Errorf("a briefing was written while the previous agent runs:\n%s", fx.briefing)
 	}
 }
 

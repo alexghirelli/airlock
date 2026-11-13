@@ -4,17 +4,18 @@
 package worktree
 
 import (
-	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"math/rand"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/alexghirelli/airlock/internal/hostgit"
 )
 
 // Repo is the main repository and the directory its worktrees live in.
@@ -26,6 +27,18 @@ type Repo struct {
 	// for Gerrit alone. With neither set, the remotes "gerrit", "origin" and
 	// "upstream" are tried in that order, or the one a change URL points at.
 	ReviewRemote, GerritRemote string
+	// TasksOf is the host folder of a worktree's task files, given its name and
+	// whether it is isolated. The caller sets it (see sandbox.WorktreeTasks): the
+	// folder depends on the sandbox that serves the worktree.
+	TasksOf func(name string, isolated bool) (string, error)
+}
+
+// taskDir is the task folder of the named worktree, as set by TasksOf.
+func (r *Repo) taskDir(name string, isolated bool) (string, error) {
+	if r.TasksOf == nil {
+		return "", errors.New("no folder for the task files of worktrees")
+	}
+	return r.TasksOf(name, isolated)
 }
 
 var nameOK = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
@@ -87,10 +100,16 @@ func AdminDir(root string) string {
 }
 
 func (r *Repo) git(dir string, args ...string) (string, error) {
+	return r.gitWithRetry(dir, hostgit.Options{}, args...)
+}
+
+// gitWithRetry is git with options, asking again while git reports a transient
+// failure.
+func (r *Repo) gitWithRetry(dir string, o hostgit.Options, args ...string) (string, error) {
 	var out string
 	var err error
 	for attempt := 1; ; attempt++ {
-		if out, err = r.gitOnce(dir, args...); err == nil || attempt == 10 || !transient(err) {
+		if out, err = r.gitWith(dir, o, args...); err == nil || attempt == 10 || !transient(err) {
 			return out, err
 		}
 		// Another airlock (or git) is writing in the same repository, as when two
@@ -139,19 +158,24 @@ func (r *Repo) worktreeAdd(args ...string) error {
 	})
 }
 
+// networkOpts is for the calls that talk to a remote: they may take longer.
+var networkOpts = hostgit.Options{Timeout: 10 * time.Minute}
+
+// gitOnce runs git in dir, a checkout of the repository, through hostgit: git
+// never finds the repository by itself from dir.
 func (r *Repo) gitOnce(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "LC_ALL=C")
-	var out, errb bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &errb
-	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(errb.String())
-		if msg == "" {
-			msg = err.Error()
-		}
-		return "", fmt.Errorf("git %s: %s", args[0], msg)
+	return r.gitWith(dir, hostgit.Options{}, args...)
+}
+
+// gitWith is gitOnce with options. Options.Writes is set for the calls that
+// change a worktree's index or HEAD.
+func (r *Repo) gitWith(dir string, o hostgit.Options, args ...string) (string, error) {
+	loc, err := hostgit.Open(r.Root, dir)
+	if err != nil {
+		return "", err
 	}
-	return strings.TrimSpace(out.String()), nil
+	out, err := loc.Output(context.Background(), o, args...)
+	return strings.TrimSpace(out), err
 }
 
 func (r *Repo) ok(dir string, args ...string) bool {
@@ -235,130 +259,6 @@ func (r *Repo) protectConfig(path string) {
 	}
 }
 
-// The task files live in the worktree's own directory inside .git, so they
-// never show up in `git status`. Pi reads them (see image/pi-wrapper.sh) every
-// time it starts in the worktree.
-const (
-	briefFile   = "airlock-review.md"  // written by `wt review`
-	focusFile   = "airlock-focus.md"   // written by the user
-	handoffFile = "airlock-handoff.md" // written by `wt handoff`, read by an agent that starts fresh
-)
-
-// CheckedAdminDir is AdminDir for a write. The .git file of a worktree is
-// written by the agent that runs in it, so it can point anywhere, and an entry
-// under the repository's worktrees folder can be replaced by a link. So the
-// directory must really lie inside that folder once symlinks are resolved; the
-// resolved path is returned.
-func CheckedAdminDir(repoRoot, path string) (string, error) {
-	admin := AdminDir(path)
-	if admin == "" {
-		return "", fmt.Errorf("%s is not a linked worktree", path)
-	}
-	base, err := filepath.EvalSymlinks(filepath.Join(repoRoot, ".git", "worktrees"))
-	if err != nil {
-		return "", fmt.Errorf("the worktrees of %s: %w", repoRoot, err)
-	}
-	real, err := filepath.EvalSymlinks(admin)
-	if err != nil {
-		return "", fmt.Errorf("%s: %w", admin, err)
-	}
-	rel, err := filepath.Rel(base, real)
-	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("%s is not a worktree of %s; refusing to write there", admin, repoRoot)
-	}
-	return real, nil
-}
-
-// WriteHandoff replaces the handoff briefing of a worktree. It is written to a
-// temporary file in the same folder and renamed over the old one, so an agent
-// that starts meanwhile reads the old briefing or the new one, never half of
-// one. An existing entry that is not a regular file (a symlink) is refused:
-// the folder is in the repository's .git, and a link there must not redirect
-// the write.
-func WriteHandoff(repoRoot, path, text string) error {
-	admin, err := CheckedAdminDir(repoRoot, path)
-	if err != nil {
-		return err
-	}
-	target := filepath.Join(admin, handoffFile)
-	if fi, err := os.Lstat(target); err == nil && !fi.Mode().IsRegular() {
-		return fmt.Errorf("%s is not a regular file; remove it first", target)
-	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	tmp, err := os.CreateTemp(admin, ".airlock-handoff-*.tmp")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name()) // a no-op once renamed
-	_, werr := tmp.WriteString(text)
-	if cerr := tmp.Close(); werr == nil {
-		werr = cerr
-	}
-	if werr == nil {
-		werr = os.Chmod(tmp.Name(), 0o644) // CreateTemp makes it 0600
-	}
-	if werr != nil {
-		return werr
-	}
-	return os.Rename(tmp.Name(), target)
-}
-
-// ClearHandoff deletes the handoff briefing of a worktree, if it has one.
-func ClearHandoff(repoRoot, path string) error {
-	admin, err := CheckedAdminDir(repoRoot, path)
-	if err != nil {
-		return err
-	}
-	if err := os.Remove(filepath.Join(admin, handoffFile)); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	return nil
-}
-
-// SetFocus sets what the agent in a worktree concentrates on. Empty text clears it.
-func SetFocus(repoRoot, path, text string) error {
-	admin, err := CheckedAdminDir(repoRoot, path)
-	if err != nil {
-		return err
-	}
-	f := filepath.Join(admin, focusFile)
-	text = strings.TrimSpace(text)
-	if text == "" {
-		if err := os.Remove(f); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-		return nil
-	}
-	return os.WriteFile(f, []byte("# Focus of this worktree\n\n"+text+"\n"), 0o644)
-}
-
-// Focus returns the focus set with SetFocus, without its heading.
-func Focus(path string) string {
-	admin := AdminDir(path)
-	if admin == "" { // not a linked worktree: never read a file from the working directory
-		return ""
-	}
-	b, err := os.ReadFile(filepath.Join(admin, focusFile))
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(strings.TrimPrefix(string(b), "# Focus of this worktree"))
-}
-
-// Brief returns the task that `wt review` wrote for a worktree, or "" when there is none.
-func Brief(path string) string {
-	admin := AdminDir(path)
-	if admin == "" {
-		return ""
-	}
-	b, err := os.ReadFile(filepath.Join(admin, briefFile))
-	if err != nil {
-		return ""
-	}
-	return string(b)
-}
-
 // Entry is one linked worktree.
 type Entry struct {
 	Name   string `json:"name"`
@@ -381,7 +281,7 @@ func (r *Repo) List() ([]Entry, error) {
 	var cur *Entry
 	flush := func() {
 		if cur != nil && cur.Path != r.Root {
-			st, _ := r.git(cur.Path, "status", "--porcelain")
+			st, _ := r.git(cur.Path, "status", "--porcelain", "--ignore-submodules=all")
 			cur.Dirty = st != ""
 			entries = append(entries, *cur)
 		}
@@ -427,7 +327,7 @@ func (r *Repo) Remove(name string, force bool) (branch string, err error) {
 	}
 	branch, _ = r.git(path, "branch", "--show-current")
 	if !force {
-		if st, _ := r.git(path, "status", "--porcelain"); st != "" {
+		if st, _ := r.git(path, "status", "--porcelain", "--ignore-submodules=all"); st != "" {
 			return branch, fmt.Errorf("%s has uncommitted changes; commit or discard them, or use --force", name)
 		}
 	}
