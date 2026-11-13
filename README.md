@@ -653,6 +653,15 @@ What it does **not** protect against:
   Docker Sandboxes and similar tools use a microVM for this; airlock has a gVisor
   option (`runsc`, not yet part of the test suite) and a microVM backend is only an
   idea so far.
+- **A restart of the container re-runs code the agent can change.** The agent has
+  `sudo`, so it is root inside the container (without `NET_ADMIN`), and the
+  container's file system is writable. It can replace the entrypoint or the programs
+  it uses (`id`, `iptables`…), and the next start of the container (`airlock stop`,
+  `sandbox.idle_stop`, a Docker restart) runs them as root with `NET_ADMIN`, before
+  the firewall is back. The firewall cannot be changed in a running container, but a
+  sandbox that was compromised and then restarted should not be trusted: remove it
+  with `airlock rm` instead of restarting it. Without `sudo` the agent cannot do this:
+  the entrypoint no longer looks anything up in folders the agent can write.
 - Anything you hand over: a read-write mount can be modified, a mounted `~/.aws`
   is readable, a `push` token can push, environment variables are visible to every
   process in the box (and in `docker inspect`).
