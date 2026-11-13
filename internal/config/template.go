@@ -128,4 +128,11 @@ concise = true                   # built-in "concise replies" skill, on for ever
 
 [audit]
 extra_patterns = []              # more files to report on, gitignore syntax
+
+# Runs on this computer when "airlock inbox --watch" sees an agent that needs you.
+# The title and the message are appended to the argv; no shell is involved unless
+# you start one. Empty = the desktop's notifier (notify-send on Linux, osascript on macOS).
+# Only this file can set it: a project's .airlock.toml cannot.
+[notify]
+# command = ["sh", "-c", "curl -s -d \"$2\" ntfy.sh/my-topic", "notify"]   # ntfy.sh, to your phone
 `

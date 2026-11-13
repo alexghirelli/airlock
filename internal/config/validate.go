@@ -60,6 +60,9 @@ func (c *Config) Validate() error {
 	if v := c.Agent.Version; v != "" && !agentVersionRe.MatchString(v) {
 		add(fmt.Errorf("agent.version: %q is not pinned, latest or a version such as 2.1.322", v))
 	}
+	if len(c.Notify.Command) > 0 && c.Notify.Command[0] == "" {
+		add(errors.New("notify.command must start with a program name"))
+	}
 	if c.Team.Enabled && c.Agent.Kind != "pi" {
 		add(errors.New("team.enabled needs agent.kind = \"pi\": the team runs on Pi"))
 	}
