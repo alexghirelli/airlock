@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/alexghirelli/airlock/internal/inbox"
 )
 
 // header and hints open the generated file. The hints are commented dotted keys
@@ -41,7 +43,7 @@ func writeList(b *strings.Builder, key string, items []Proposal) {
 	fmt.Fprintf(b, "%s = [\n", key)
 	for _, p := range items {
 		// Specs were checked by the scanner's patterns: plain ASCII, so Quote is valid TOML.
-		fmt.Fprintf(b, "  %s, # %s\n", strconv.Quote(p.Spec), p.Why)
+		fmt.Fprintf(b, "  %s, # %s\n", strconv.Quote(p.Spec), inbox.Clean(p.Why, maxWhy))
 	}
 	b.WriteString("]\n")
 }
