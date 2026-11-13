@@ -64,6 +64,20 @@ Type "airlock wt ls"
 Enter
 Sleep 2.5s
 
+# ---- 3. What changed, and who is waiting -------------------------------------
+Hide
+Type 'card "3 · see what changed before you merge, and who is waiting" "one screen per worktree, and the agents of every sandbox"; sleep 3; clear'
+Enter
+Show
+Sleep 3.3s
+
+Type "airlock summary review-pr-7"
+Enter
+Sleep 4.5s
+Type "airlock inbox"
+Enter
+Sleep 3s
+
 Type "airlock wt open review-pr-7"
 Enter
 Sleep 9s
