@@ -18,6 +18,7 @@ import (
 const wtUsage = `usage: airlock wt add <name> [focus...] [-b branch] [--from ref]
        airlock review <change|pr:N|mr:N|bb:N|url> [focus...]
        airlock wt open <name> | focus <name> [text] | handoff <name> [note...] | ls | rm <name> [--force] | prune [--force]
+       airlock wt run <runner> <worktree|.> [--print] -- <command> [args...]
        (add, review: --shared or --isolated, --no-attach; handoff: --agent, --force, --reset)`
 
 // cmdWt manages the git worktrees of the repository around the current
@@ -34,6 +35,9 @@ func (e *env) cmdWt(ctx context.Context) (int, error) {
 	sub, args := "ls", []string(nil)
 	if len(e.a.rest) > 0 {
 		sub, args = e.a.rest[0], e.a.rest[1:]
+	}
+	if sub == "run" { // loads the project itself: "." needs no worktrees directory
+		return e.cmdWtRun(ctx, args)
 	}
 	l, err := e.load()
 	if err != nil {

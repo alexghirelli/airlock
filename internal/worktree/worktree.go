@@ -67,18 +67,31 @@ func (r *Repo) PathFor(name string, isolated bool) (string, error) {
 	return filepath.Join(base, name), nil
 }
 
-// Find looks for an existing worktree of that name, in either place.
+// Find looks for an existing worktree of that name, in either place. The folder
+// must be a real directory with a .git file, not a link: the worktrees folder
+// is written by the agent, so a link there could name anything on the host.
 func (r *Repo) Find(name string) (path string, isolated, ok bool) {
 	for _, iso := range []bool{false, true} {
 		p, err := r.PathFor(name, iso)
 		if err != nil {
 			return "", false, false
 		}
-		if _, err := os.Stat(p); err == nil {
+		if IsWorktreeDir(p) {
 			return p, iso, true
 		}
 	}
 	return "", false, false
+}
+
+// IsWorktreeDir reports whether p is a real directory (not a link) holding a
+// .git file that is a regular file (not a link or a folder).
+func IsWorktreeDir(p string) bool {
+	st, err := os.Lstat(p)
+	if err != nil || !st.IsDir() {
+		return false
+	}
+	gst, err := os.Lstat(filepath.Join(p, ".git"))
+	return err == nil && gst.Mode().IsRegular()
 }
 
 // AdminDir is the worktree's own directory inside the repository's .git
