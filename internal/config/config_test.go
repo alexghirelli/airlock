@@ -72,6 +72,23 @@ func TestUserConfigOverridesDefaults(t *testing.T) {
 	}
 }
 
+func TestIdleStopAndResume(t *testing.T) {
+	def, err := load(t, "", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if def.Config.IdleStopSeconds() != 0 || !def.Config.Agent.Resume {
+		t.Errorf("defaults: idle_stop %d s, resume %v; want never and true", def.Config.IdleStopSeconds(), def.Config.Agent.Resume)
+	}
+	r, err := load(t, "[sandbox]\nidle_stop = \"2h\"\n[agent]\nresume = false\n", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := r.Config.IdleStopSeconds(); got != 7200 || r.Config.Agent.Resume {
+		t.Errorf("idle_stop %d s, resume %v; want 7200 and false", got, r.Config.Agent.Resume)
+	}
+}
+
 func TestUnknownUserKeyIsAnError(t *testing.T) {
 	_, err := load(t, "[sandbox]\nuii = \"shell\"\n", "", nil)
 	if err == nil || !strings.Contains(err.Error(), "uii") {
@@ -111,6 +128,8 @@ func TestValidation(t *testing.T) {
 		"mcp neither":     "[[mcp]]\nname=\"x\"\n",
 		"mcp args on url": "[[mcp]]\nname=\"x\"\nurl=\"https://x\"\nargs=[\"a\"]\n",
 		"mcp bad env":     "[[mcp]]\nname=\"x\"\ncommand=\"node\"\nenv={\"A B\"=\"1\"}\n",
+		"idle not time":   "[sandbox]\nidle_stop = \"soon\"\n",
+		"idle too short":  "[sandbox]\nidle_stop = \"30s\"\n",
 	}
 	for name, cfg := range cases {
 		if _, err := load(t, cfg, "", nil); err == nil {

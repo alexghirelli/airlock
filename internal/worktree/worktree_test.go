@@ -350,6 +350,39 @@ func TestListAndRemove(t *testing.T) {
 	}
 }
 
+func TestStaleWorktreesArePruned(t *testing.T) {
+	f := newFixture(t)
+	gone, err := f.repo.Add("gone", "", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.repo.Add("kept", "", "", false); err != nil {
+		t.Fatal(err)
+	}
+	if stale, err := f.repo.Stale(); err != nil || len(stale) != 0 {
+		t.Fatalf("nothing is stale yet: %+v, %v", stale, err)
+	}
+	if err := os.RemoveAll(gone); err != nil { // deleted by hand
+		t.Fatal(err)
+	}
+	// airlock locks its worktrees, so plain git prune would leave this one behind.
+	git(t, f.main, "worktree", "prune")
+	stale, err := f.repo.Stale()
+	if err != nil || len(stale) != 1 || stale[0].Name != "gone" {
+		t.Fatalf("stale = %+v, %v; want only gone", stale, err)
+	}
+	if err := f.repo.PruneStale(stale); err != nil {
+		t.Fatal(err)
+	}
+	list, _ := f.repo.List()
+	if len(list) != 1 || list[0].Name != "kept" {
+		t.Errorf("after pruning: %+v", list)
+	}
+	if git(t, f.main, "branch", "--list", "gone") == "" {
+		t.Error("the branch was deleted; it must be kept")
+	}
+}
+
 func TestIsolatedWorktreesLiveInTheirOwnFolder(t *testing.T) {
 	f := newFixture(t)
 	shared, err := f.repo.Add("mine", "", "", false)

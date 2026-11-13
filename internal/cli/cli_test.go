@@ -101,6 +101,16 @@ func TestWorktreeIsolationDefaultsAndFlags(t *testing.T) {
 	}
 }
 
+func TestParseArgsFresh(t *testing.T) {
+	a, err := parseArgs([]string{"wt", "open", "rate-limit", "--fresh"})
+	if err != nil || !a.fresh {
+		t.Errorf("--fresh: %+v, %v", a, err)
+	}
+	if a, err = parseArgs([]string{"wt", "open", "rate-limit"}); err != nil || a.fresh {
+		t.Errorf("without --fresh: %+v, %v", a, err)
+	}
+}
+
 func TestParseArgsAttachFlags(t *testing.T) {
 	a, err := parseArgs([]string{"review", "12345", "--attach"})
 	if err != nil || !a.attach || a.noAttach {
