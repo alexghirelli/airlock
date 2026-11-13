@@ -21,6 +21,7 @@ func TestParseArgs(t *testing.T) {
 		{[]string{"exec", "/p", "--", "make", "--verbose"}, "exec", "/p", []string{"make", "--verbose"}},
 		{[]string{"login", "anthropic", "opencode-go"}, "login", "", []string{"anthropic", "opencode-go"}},
 		{[]string{"config", "init"}, "config", "", []string{"init"}},
+		{[]string{"init", "/some/project"}, "init", "/some/project", nil},
 		{[]string{"./shell"}, "start", "./shell", nil}, // a directory called "shell"
 		{[]string{"wt", "add", "feat"}, "wt", "", []string{"add", "feat"}},
 		{[]string{"wt"}, "wt", "", nil},

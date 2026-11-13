@@ -46,7 +46,8 @@ Usage:
                                (build --if-missing skips an image that already exists)
   airlock doctor               check the runtime, mounts, firewall and credentials
   airlock audit [path]         report changes to host-executable files (--accept to acknowledge)
-  airlock config [init|show|path|edit]
+  airlock init [path]          write this project's .airlock.toml from what it uses (--force overwrites)
+  airlock config [init|show|path|edit]   your user config; config init writes it, init is per project
   airlock mcp import <file>    turn an "mcpServers" JSON file into [[mcp]] entries
   airlock version
 
@@ -79,7 +80,7 @@ Flags:
 // commands maps a first word to a command; anything else is a project path.
 var commands = map[string]bool{
 	"wt": true, "summary": true, "review": true, "shell": true, "exec": true, "stop": true, "restart": true, "mcp": true, "rm": true, "ls": true, "inbox": true, "login": true,
-	"build": true, "update": true, "doctor": true, "audit": true, "config": true, "gc": true,
+	"build": true, "update": true, "doctor": true, "audit": true, "config": true, "gc": true, "init": true,
 	"version": true, "help": true,
 }
 
@@ -300,6 +301,8 @@ func (e *env) run(ctx context.Context) (int, error) {
 		return e.cmdBuild(ctx)
 	case "config":
 		return e.cmdConfig()
+	case "init":
+		return e.cmdInit()
 	case "login":
 		return e.cmdLogin(ctx)
 	case "doctor":

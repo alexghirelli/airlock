@@ -62,6 +62,9 @@ airlock                              # first run builds the image
 Inside, Herdr opens with Pi running in the project's workspace. Close the terminal
 at any time: the sandbox and its agents keep running, and `airlock` reattaches.
 
+New to airlock? `airlock init` in the project folder reads what the project uses and
+writes a starter `.airlock.toml` (see [Starting a project](#starting-a-project-airlock-init)).
+
 ```
 airlock [path]               start or resume the sandbox for a project and attach
 airlock shell [path]         open a shell in it
@@ -76,7 +79,8 @@ airlock login                log in to the providers named in your config
 airlock audit [path]         report changes to files that run on your computer
 airlock doctor               check the runtime, the firewall and the setup
 airlock build | update       build the image / rebuild it from scratch
-airlock config init|show|path|edit
+airlock init [path]          write this project's .airlock.toml from what it uses
+airlock config init|show|path|edit   your user config (init is per project, config init is yours)
 airlock --remote <ssh-host> <command>
 ```
 
@@ -334,6 +338,27 @@ Put what they build under `~/.local/share/mise` to keep it across recreations.
 With `watch`, a step also reruns when the files under those paths change (size or
 modification time; `.git`, `__pycache__`, `node_modules` and `*.log` are ignored),
 so a copy of a tool from a mount stays current.
+
+### Starting a project: airlock init
+
+`airlock init` looks at the project root and writes `.airlock.toml` with the packages
+the project needs (`extras.mise`, `extras.apt`), each with a comment saying which file
+it came from. Toolchains that a version file already pins (`.nvmrc`, `.python-version`,
+`.tool-versions`, `mise.toml` and the like) are left alone. It detects Node, Go, Python,
+Ruby, Rust and PHP (PHP comes from apt: mise would compile it for minutes). It writes at
+the repository root, also when you run it inside a worktree. It refuses to overwrite an
+existing file, and never writes through a symlink, even with `--force`; `--json` only
+prints the result.
+
+Services are matched by name: an image whose last path segment contains `mariadb`,
+`mysql`, `postgres`, `postgis`, `redis`, `valkey`, `memcached`, `mongo`, `elasticsearch`,
+`opensearch` or `rabbitmq` is listed (so `bitnami/postgresql` counts, and so can an
+exporter with such a name).
+
+It does not write your user config. It prints what belongs there instead: MCP config
+files to pass to `airlock mcp import`, compose services that run a database (airlock has
+no service containers yet), and secret-looking files to add to `.airlockignore`.
+`airlock config init` is the other command: it writes your user config.
 
 ### Where your additions go
 
