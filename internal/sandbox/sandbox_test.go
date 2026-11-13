@@ -945,13 +945,14 @@ func TestPlanAgentManifestAndClaudeMCP(t *testing.T) {
 			Versions map[string]string `json:"versions"`
 			Install  []string          `json:"install"`
 			Args     []string          `json:"args"`
+			Resume   bool              `json:"resume"`
 		} `json:"agent"`
 	}
 	if err := json.Unmarshal([]byte(files["/etc/airlock/manifest.json"]), &man); err != nil {
 		t.Fatal(err)
 	}
 	if man.Agent.Kind != "claude" || man.Agent.Versions["claude"] != "latest" || man.Agent.Versions["pi"] != config.PinnedPiVersion ||
-		len(man.Agent.Install) != 1 || man.Agent.Install[0] != "claude" || len(man.Agent.Args) != 1 {
+		len(man.Agent.Install) != 1 || man.Agent.Install[0] != "claude" || len(man.Agent.Args) != 1 || !man.Agent.Resume {
 		t.Errorf("agent manifest: %+v", man.Agent)
 	}
 	var mcp struct {
