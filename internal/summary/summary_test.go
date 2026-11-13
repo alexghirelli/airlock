@@ -524,7 +524,7 @@ func TestCollectCapsCommitsAndReadsTaskFiles(t *testing.T) {
 	for i := 0; i < 55; i++ {
 		testGit(t, p.wt, "commit", "-q", "--allow-empty", "-m", fmt.Sprintf("c%02d", i))
 	}
-	if err := worktree.SetFocus(p.wt, "check the SQL"); err != nil {
+	if err := worktree.SetFocus(p.main, p.wt, "check the SQL"); err != nil {
 		t.Fatal(err)
 	}
 	brief := filepath.Join(worktree.AdminDir(p.wt), "airlock-review.md")

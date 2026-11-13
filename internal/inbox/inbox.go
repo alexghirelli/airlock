@@ -66,11 +66,18 @@ func (a Agent) id() string {
 
 // Raw is one entry of `herdr agent list`.
 type Raw struct {
-	Agent       string `json:"agent"`
-	AgentStatus string `json:"agent_status"`
-	Cwd         string `json:"cwd"`
-	Name        string `json:"name"`
-	PaneID      string `json:"pane_id"`
+	Agent        string      `json:"agent"`
+	AgentSession *RawSession `json:"agent_session"`
+	AgentStatus  string      `json:"agent_status"`
+	Cwd          string      `json:"cwd"`
+	Name         string      `json:"name"`
+	PaneID       string      `json:"pane_id"`
+}
+
+// RawSession is the agent_session of a Raw entry. For Pi and Claude Code,
+// Value is the path of the transcript inside the sandbox.
+type RawSession struct {
+	Value string `json:"value"`
 }
 
 // Answer is what a sandbox's `herdr agent list` said.
