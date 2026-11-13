@@ -3,7 +3,7 @@ package config
 // Template is the commented user config written by `airlock config init`.
 // A test checks that it decodes strictly and equals the built-in defaults.
 const Template = `# airlock user configuration.
-# Precedence: built-in defaults < this file < <project>/.airlock.toml < CLI flags < AIRLOCK_* env vars.
+# Precedence: built-in defaults < this file < settings for one project (projects/*.toml next to this file) < <project>/.airlock.toml < CLI flags < AIRLOCK_* env vars.
 # The project file is untrusted: it can only tighten limits and pick a few
 # harmless options (see docs/configuration.md). Everything below is yours.
 
@@ -19,6 +19,9 @@ worktree_isolation = "none"      # which "airlock wt" worktrees get a sandbox of
                                  #   none (all share the project's, a Herdr workspace each) | reviews | all
 idle_stop = ""                   # stop the sandbox after this long with no terminal attached and no agent working,
                                  #   e.g. "2h" (at least 5m); airlock starts it again and the agents continue their conversations
+# worktree_link = []             # paths of the project root that new worktrees link to the main checkout, e.g.
+#                                 #   ["LocalSettings.php", "vendor"]. Set it in a settings file for one project
+#                                 #   (airlock config edit --project), not in .airlock.toml: it is ignored there.
 
 [network]
 mode = "open-no-lan"             # open-no-lan | allowlist | open
@@ -106,7 +109,8 @@ mise = []                        # e.g. ["node@22"], preinstalled globally
 # Preparation steps run inside the sandbox at start, before the agent: build a
 # virtualenv, install node_modules, anything airlock knows nothing about. A step
 # is skipped while its command is unchanged and the "creates" path exists. Only
-# this file may define them; a project's .airlock.toml cannot.
+# your own config may define them (this file, or a settings file for one project);
+# a project's .airlock.toml cannot.
 # [[setup]]
 # name = "gerrit-venv"
 # run = """
@@ -143,7 +147,8 @@ extra_patterns = []              # more files to report on, gitignore syntax
 # Runs on this computer when "airlock inbox --watch" sees an agent that needs you.
 # The title and the message are appended to the argv; no shell is involved unless
 # you start one. Empty = the desktop's notifier (notify-send on Linux, osascript on macOS).
-# Only this file can set it: a project's .airlock.toml cannot.
+# Only your own config can set it (this file, or a settings file for one project):
+# a project's .airlock.toml cannot.
 [notify]
 # command = ["sh", "-c", "curl -s -d \"$2\" ntfy.sh/my-topic", "notify"]   # ntfy.sh, to your phone
 `

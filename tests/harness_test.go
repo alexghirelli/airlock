@@ -70,7 +70,13 @@ func newProject(t *testing.T, name, userToml string) *project {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	p := &project{t: t, Dir: dir, cfg: filepath.Join(base, "user.toml")}
+	// The user config lives in a folder of its own: airlock refuses a project that
+	// contains, or sits inside, the folder with the trusted settings.
+	cfgDir := filepath.Join(base, "config")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	p := &project{t: t, Dir: dir, cfg: filepath.Join(cfgDir, "user.toml")}
 	if err := os.WriteFile(p.cfg, []byte(userToml), 0o644); err != nil {
 		t.Fatal(err)
 	}

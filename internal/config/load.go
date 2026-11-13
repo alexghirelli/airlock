@@ -45,6 +45,13 @@ type Result struct {
 	UserConfigPath    string
 	UserConfigExists  bool
 	ProjectConfigPath string
+	// ProjectFiles are the files of the projects folder that applied to this
+	// project, in the order they were applied.
+	ProjectFiles []string
+	// ProjectsDir is the projects folder in use ("" when there is none: see
+	// ProjectsDirFor). ConfigFolders are the folders a sandbox must not reach.
+	ProjectsDir   string
+	ConfigFolders []string
 	// ProjectExtras are the packages the untrusted project config asks to
 	// have preinstalled. They are layered on top of the base image.
 	ProjectExtras ProjectExtras
@@ -94,6 +101,8 @@ func Load(opts LoadOptions) (*Result, error) {
 	if res.UserConfigPath == "" {
 		res.UserConfigPath = UserConfigPath()
 	}
+	res.ProjectsDir, _ = ProjectsDirFor(res.UserConfigPath, getenv)
+	res.ConfigFolders = ConfigFolders(res.UserConfigPath, res.ProjectsDir)
 
 	data, err := os.ReadFile(res.UserConfigPath)
 	switch {
@@ -113,6 +122,15 @@ func Load(opts LoadOptions) (*Result, error) {
 	}
 
 	if opts.ProjectDir != "" {
+		root, err := filepath.Abs(opts.ProjectDir)
+		if err != nil {
+			return nil, err
+		}
+		if res.ProjectsDir != "" {
+			if err := applyProjectFiles(res, res.ProjectsDir, root); err != nil {
+				return nil, err
+			}
+		}
 		res.ProjectConfigPath = filepath.Join(opts.ProjectDir, ProjectConfigName)
 		pdata, err := os.ReadFile(res.ProjectConfigPath)
 		switch {
@@ -135,11 +153,18 @@ func Load(opts LoadOptions) (*Result, error) {
 	if err := res.Config.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid configuration:\n%w", err)
 	}
+	// The mounts, checked against the folders of this run: --config and
+	// AIRLOCK_PROJECTS_DIR may name folders the validation above did not know.
+	for _, m := range res.Config.Mounts {
+		if err := CheckFolderReach(m.Host, fmt.Sprintf("mount %q", m.Name), res.ConfigFolders); err != nil {
+			return nil, err
+		}
+	}
 	res.Warnings = append(res.Warnings, riskyMounts(&res.Config)...)
 	return res, nil
 }
 
-func decodeStrict(data []byte, into *Config) error {
+func decodeStrict(data []byte, into any) error {
 	dec := toml.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(into); err != nil {
