@@ -38,6 +38,7 @@ Usage:
   airlock wt [ls] | rm <name>  list worktrees / remove one (--force with changes)
   airlock wt prune [--force]   forget worktrees whose folder was deleted by hand (branches stay)
   airlock wt run <runner> <worktree|.> [--print] -- <command> [args...]   run a command in a container you already have
+  airlock wt link [name]       link the sandbox.worktree_link paths into a worktree (all of them without a name)
   airlock summary [worktree]   what a worktree changed: commits, files, uncommitted and untracked (--json)
   airlock remote push|pull|open <host> [path]   keep the project on a server with git (see README)
   airlock rm --purge           also delete this project's own credentials volume (credentials.scope = per-project)
@@ -51,6 +52,7 @@ Usage:
   airlock audit [path]         report changes to host-executable files (--accept to acknowledge)
   airlock init [path]          write this project's .airlock.toml from what it uses (--force overwrites)
   airlock config [init|show|path|edit]   your user config; config init writes it, init is per project
+  airlock config init|path|edit --project   this project's settings in the projects folder (see README)
   airlock mcp import <file>    turn an "mcpServers" JSON file into [[mcp]] entries
   airlock version
 
@@ -72,6 +74,7 @@ Flags:
   --shared           wt add/review: use the project's sandbox, a Herdr workspace each
   --isolated         wt add/review: give the worktree a sandbox of its own
                      (the default comes from sandbox.worktree_isolation)
+  --project          config init|path|edit: the settings file of the project around the current directory
   --remote <host>    run the command on a remote machine over ssh
   --config <file>    use this user config file
   --json             machine-readable output (ls, doctor, audit, inbox)
@@ -115,6 +118,7 @@ type args struct {
 	attach    bool
 	shared    bool
 	isolated  bool
+	project   bool // config init|path|edit: this project's settings file
 	branch    string
 	from      string
 	help      bool
@@ -180,6 +184,8 @@ func parseArgs(argv []string) (*args, error) {
 				a.noAttach = true
 			case "--attach":
 				a.attach = true
+			case "--project":
+				a.project = true
 			case "--shared":
 				a.shared = true
 			case "--isolated":

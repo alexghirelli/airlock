@@ -40,6 +40,9 @@ func (e *env) cmdDoctor(ctx context.Context) (int, error) {
 			detail += "; project config: " + l.res.ProjectConfigPath
 		}
 		r.Add("configuration", doctor.OK, detail, "")
+		for _, f := range l.res.ProjectFiles {
+			r.Add("project settings", doctor.OK, f, "")
+		}
 		for _, w := range l.res.Warnings {
 			r.Add("configuration warning", doctor.Warn, w, "")
 		}

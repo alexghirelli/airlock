@@ -108,6 +108,16 @@ func BuildPlan(in PlanInput) (*Plan, error) {
 	if host.Getenv == nil {
 		host.Getenv = os.Getenv
 	}
+	// The project's folders are bound into the sandbox. They must not hold or lie
+	// inside the folders where the trusted settings live.
+	for _, dir := range []string{p.Root, p.Main} {
+		if dir == "" {
+			continue
+		}
+		if err := config.CheckFolderReach(dir, "project folder", res.ConfigFolders); err != nil {
+			return nil, err
+		}
+	}
 	plan := &Plan{Project: p, Warnings: append([]string(nil), res.Warnings...)}
 	warn := func(format string, a ...any) { plan.Warnings = append(plan.Warnings, fmt.Sprintf(format, a...)) }
 

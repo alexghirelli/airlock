@@ -86,6 +86,11 @@ func (c *Config) Validate() error {
 			add(fmt.Errorf("sandbox.worktrees_dir: %w", err))
 		}
 	}
+	for _, p := range c.Sandbox.WorktreeLink {
+		if err := validLinkPattern(p, c.Sandbox.WorktreesDir); err != nil {
+			add(fmt.Errorf("%s: %w", WorktreeLinkName, err))
+		}
+	}
 	if d := c.Image.Dockerfile; d != "" {
 		if err := validRelDir(d); err != nil {
 			add(fmt.Errorf("image.dockerfile: %w", err))
@@ -320,7 +325,9 @@ func checkMountHost(host string) error {
 	if home, err := os.UserHomeDir(); err == nil && clean == filepath.Clean(home) {
 		return errors.New("mounting your entire home directory is not allowed; mount a subfolder")
 	}
-	return nil
+	// The configuration folders hold the trusted settings (config.toml, projects/):
+	// a sandbox that could write there could change what runs on the host.
+	return CheckFolderReach(clean, "mount", defaultConfigFolders())
 }
 
 // ExpandHome expands a leading ~ to the user's home directory.
