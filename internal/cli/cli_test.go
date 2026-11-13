@@ -122,6 +122,20 @@ func TestParseArgsAttachFlags(t *testing.T) {
 	}
 }
 
+func TestParseArgsInbox(t *testing.T) {
+	a, err := parseArgs([]string{"inbox", "--watch"})
+	if err != nil || a.command != "inbox" || !a.watch || a.json {
+		t.Errorf("inbox --watch: %+v, %v", a, err)
+	}
+	a, err = parseArgs([]string{"inbox", "--json"})
+	if err != nil || a.command != "inbox" || a.watch || !a.json {
+		t.Errorf("inbox --json: %+v, %v", a, err)
+	}
+	if a, err = parseArgs([]string{"--remote", "box", "inbox", "--watch"}); err != nil || a.remote != "box" || !a.watch {
+		t.Errorf("--remote with inbox --watch: %+v, %v", a, err)
+	}
+}
+
 func TestLoginTargets(t *testing.T) {
 	c := config.Defaults()
 	if got := loginTargets(&c); len(got) != 0 {
