@@ -251,11 +251,22 @@ func (c *capBuffer) result() (over bool, data []byte) {
 // (see inbox.Classify). It returns an error for anything that is not a list or
 // a missing server, which the caller reports as a sandbox that did not answer.
 func queryHerdr(ctx context.Context, b inboxBackend, sb backend.Info, worktreesDir string) ([]inbox.Agent, error) {
+	raw, err := herdrAgents(ctx, b, sb.Name)
+	if err != nil {
+		return nil, err
+	}
+	return inbox.Build(sb.Name, sb.Labels[backend.LabelProject], worktreesDir, raw), nil
+}
+
+// herdrAgents is the raw `herdr agent list` of one sandbox, for the callers that
+// need more than the inbox rows (the session path, the working directory). A
+// sandbox without a Herdr server has no agents: nil, not an error.
+func herdrAgents(ctx context.Context, b inboxBackend, name string) ([]inbox.Raw, error) {
 	qctx, cancel := context.WithTimeout(ctx, inboxQueryTimeout)
 	defer cancel()
 	stdout := &capBuffer{limit: herdrReplyLimit}
 	stderr := &capBuffer{limit: herdrReplyLimit}
-	code, err := b.Exec(qctx, sb.Name, backend.ExecOpts{
+	code, err := b.Exec(qctx, name, backend.ExecOpts{
 		Cmd: herdrListCmd, User: "root", WorkDir: "/home/agent", Env: sandbox.SessionEnv(os.Getenv),
 		Stdout: stdout, Stderr: stderr,
 	})
@@ -277,5 +288,5 @@ func queryHerdr(ctx context.Context, b inboxBackend, sb backend.Info, worktreesD
 	case inbox.Failed:
 		return nil, errBadReply
 	}
-	return inbox.Build(sb.Name, sb.Labels[backend.LabelProject], worktreesDir, raw), nil
+	return raw, nil
 }
