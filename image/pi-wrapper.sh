@@ -3,17 +3,28 @@
 # prepends this sandbox's defaults (skills from mounts, default model) from
 # /etc/airlock/pi.args, and the task of the worktree it starts in. They live outside the shared credentials volume on
 # purpose: they differ per project.
+# The folders of the task files, one per worktree, mounted read-only by airlock.
+tasks_root=/run/airlock/tasks
+# The task folder of the linked worktree the current directory is in. Only a
+# linked worktree has one: its .git is a file, and it is named after its folder,
+# as airlock names worktrees.
+task_dir() {
+  local top
+  top="$(git rev-parse --show-toplevel 2>/dev/null)" || return 1
+  [[ -f "$top/.git" ]] || return 1
+  printf '%s/%s\n' "$tasks_root" "${top##*/}"
+}
 args=()
 case "${1:-}" in
   install|remove|uninstall|update|list|config|auth|mcp|-h|--help|-v|--version|--list-models|--export) ;;
   *) [[ -r /etc/airlock/pi.args ]] && mapfile -t args </etc/airlock/pi.args
-     # The task of the git worktree Pi starts in (airlock wt review / wt focus):
-     # files in the worktree's own git directory, so they stay out of `git status`.
-     if gd="$(git rev-parse --absolute-git-dir 2>/dev/null)"; then
-       # The handoff briefing (airlock wt handoff) stays until it is reset or replaced,
-       # like the focus: a resumed conversation gets it too.
-       for f in airlock-review.md airlock-focus.md airlock-handoff.md; do
-         [[ -r "$gd/$f" ]] && args+=(--append-system-prompt "$gd/$f")
+     # The task of the git worktree Pi starts in (airlock review, wt focus, wt handoff).
+     # The sandbox cannot write its folder, so the agent cannot change what it reads.
+     if task="$(task_dir)"; then
+       # The handoff briefing stays until it is reset or replaced, like the focus:
+       # a resumed conversation gets it too.
+       for f in review.md focus.md handoff.md; do
+         [[ -r "$task/$f" ]] && args+=(--append-system-prompt "$task/$f")
        done
      fi ;;
 esac

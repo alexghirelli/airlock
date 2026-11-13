@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"text/tabwriter"
 
@@ -40,6 +41,7 @@ func (e *env) cmdWt(ctx context.Context) (int, error) {
 	}
 	cfg := &l.res.Config
 	repo := &worktree.Repo{Root: l.project.RepoRoot(), Dir: cfg.Sandbox.WorktreesDir, ReviewRemote: cfg.Git.ReviewRemote, GerritRemote: cfg.Git.GerritRemote}
+	repo.TasksOf = tasksOf(repo.Root, cfg.Sandbox.WorktreesDir)
 	if sub != "ls" && sub != "list" && repo.Dir == "" {
 		return 2, errors.New("worktrees are disabled (sandbox.worktrees_dir is empty)")
 	}
@@ -50,12 +52,13 @@ func (e *env) cmdWt(ctx context.Context) (int, error) {
 	switch sub {
 	case "add":
 		name, focus := args[0], strings.TrimSpace(strings.Join(args[1:], " "))
-		path, err := repo.Add(name, e.a.branch, e.a.from, e.isolate(cfg, false))
+		isolated := e.isolate(cfg, false)
+		path, err := repo.Add(name, e.a.branch, e.a.from, isolated)
 		if err != nil {
 			return 1, err
 		}
 		if focus != "" {
-			if err := worktree.SetFocus(repo.Root, path, focus); err != nil {
+			if err := setFocus(repo, name, isolated, focus); err != nil {
 				return 1, err
 			}
 		}
@@ -73,7 +76,7 @@ func (e *env) cmdWt(ctx context.Context) (int, error) {
 			return 1, err
 		}
 		if focus := strings.TrimSpace(strings.Join(args[1:], " ")); focus != "" {
-			if err := worktree.SetFocus(repo.Root, res.Path, focus); err != nil {
+			if err := setFocus(repo, filepath.Base(res.Path), res.Isolated, focus); err != nil {
 				return 1, err
 			}
 		}
@@ -95,17 +98,21 @@ func (e *env) cmdWt(ctx context.Context) (int, error) {
 		return e.openWorktree(ctx, path, false)
 
 	case "focus":
-		path, _, ok := repo.Find(args[0])
+		_, isolated, ok := repo.Find(args[0])
 		if !ok {
 			return 1, fmt.Errorf("no worktree %q (see airlock wt ls)", args[0])
 		}
 		if len(args) == 1 {
-			if f := worktree.Focus(path); f != "" {
+			dir, err := repo.TasksOf(args[0], isolated)
+			if err != nil {
+				return 1, err
+			}
+			if f := worktree.Focus(dir); f != "" {
 				fmt.Fprintln(e.stdout, f)
 			}
 			return 0, nil
 		}
-		if err := worktree.SetFocus(repo.Root, path, strings.Join(args[1:], " ")); err != nil {
+		if err := setFocus(repo, args[0], isolated, strings.Join(args[1:], " ")); err != nil {
 			return 1, err
 		}
 		e.errf("airlock: focus of %s updated; Pi reads it when it starts, so restart Pi there to apply it", args[0])
@@ -239,10 +246,30 @@ func (e *env) wtList(ctx context.Context, repo *worktree.Repo, l *loaded) (int, 
 		if r.Dirty {
 			changes = "uncommitted"
 		}
-		focus := firstLine(worktree.Focus(r.Path), 40)
+		focus := ""
+		if dir, err := repo.TasksOf(r.Name, r.Isolated); err == nil {
+			focus = firstLine(worktree.Focus(dir), 40)
+		}
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s (%s)\t%s\n", r.Name, branch, r.Head, changes, r.Sandbox, r.Mode, focus)
 	}
 	return 0, tw.Flush()
+}
+
+// tasksOf is the TasksOf of the worktrees of the repository at root: each
+// worktree's task folder, in the sandbox that serves it.
+func tasksOf(root, worktreesDir string) func(string, bool) (string, error) {
+	return func(name string, isolated bool) (string, error) {
+		return sandbox.WorktreeTasks(root, worktreesDir, name, isolated)
+	}
+}
+
+// setFocus writes the focus of the named worktree to its task folder.
+func setFocus(repo *worktree.Repo, name string, isolated bool, text string) error {
+	dir, err := repo.TasksOf(name, isolated)
+	if err != nil {
+		return err
+	}
+	return worktree.SetFocus(dir, text)
 }
 
 func firstLine(s string, max int) string {
@@ -308,9 +335,16 @@ func (e *env) wtRemove(ctx context.Context, repo *worktree.Repo, l *loaded, name
 			}
 		}
 	}
+	// Found before the removal: the folder is worked out from the worktree's path.
+	tasks, taskErr := repo.TasksOf(name, isolated)
 	branch, err := repo.Remove(name, e.a.force)
 	if err != nil {
 		return 1, err
+	}
+	if taskErr == nil {
+		if err := worktree.RemoveTasks(tasks); err != nil {
+			e.errf("airlock: warning: could not delete the task files of %s: %v", name, err)
+		}
 	}
 	e.errf("airlock: removed worktree %s", name)
 	if branch != "" {

@@ -76,6 +76,9 @@ type Plan struct {
 	// Policy is a hash of the settings that are fixed at creation time. When
 	// it changes for an existing sandbox, the sandbox must be recreated.
 	Policy string
+	// TasksDir is the host folder the sandbox mounts for its task files. It must
+	// exist before the sandbox is created (Manager.Up creates it).
+	TasksDir string
 	// BaseImage is the airlock base image, ProjectImage the per-project image
 	// (empty when the base image is used as is).
 	BaseImage    string
@@ -159,6 +162,14 @@ func BuildPlan(in PlanInput) (*Plan, error) {
 	for _, g := range gitProtectedPaths(p, worktreeConfig) {
 		binds = append(binds, backend.Bind{Source: g.host, Target: g.container, ReadOnly: true})
 	}
+	// The task files (focus, review, handoff) of the worktrees this sandbox
+	// serves: a host folder the sandbox reads and cannot write (see tasks.go).
+	tasksDir, tasksTarget, err := taskMount(p, c.Sandbox.WorktreesDir)
+	if err != nil {
+		return nil, err
+	}
+	plan.TasksDir = tasksDir
+	binds = append(binds, backend.Bind{Source: tasksDir, Target: tasksTarget, ReadOnly: true})
 	var mountInfos []mountInfo
 	for _, m := range c.Mounts {
 		target := "/mnt/" + m.Name

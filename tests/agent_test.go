@@ -26,12 +26,11 @@ head -c 2 /usr/local/bin/claude; echo " <- the claude in the image is a script, 
 test ! -e /opt/claude && echo no-opt-claude
 echo "version: $(claude --version 2>&1 | head -1)"
 ls ~/.local/share/mise/agents/claude
-echo "task: focus on the api" > "$(git rev-parse --absolute-git-dir)/airlock-focus.md"
 AIRLOCK_AGENT_ARGS_ONLY=1 claude
 `)
 	for _, want := range []string{"#! <-", "no-opt-claude", "version: 2.1.322 (Claude Code)", "2.1.322\n",
 		"--dangerously-skip-permissions", "--mcp-config\n/etc/airlock/claude-mcp.json", "--append-system-prompt\n",
-		"airlock sandbox", "task: focus on the api"} {
+		"airlock sandbox"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)
 		}
