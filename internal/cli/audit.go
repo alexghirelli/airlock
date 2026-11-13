@@ -16,11 +16,7 @@ func auditPath(p *sandbox.Project) string {
 // auditChanges compares the project with its baseline. With no baseline yet it
 // records one and reports nothing.
 func auditChanges(m *sandbox.Manager) ([]audit.Change, error) {
-	now, err := audit.Take(m.Project.Root, m.Config.Config.Audit.ExtraPatterns)
-	if err != nil {
-		return nil, err
-	}
-	base, err := audit.Load(auditPath(m.Project))
+	now, base, err := auditSnapshots(m)
 	if err != nil {
 		return nil, err
 	}
@@ -28,6 +24,26 @@ func auditChanges(m *sandbox.Manager) ([]audit.Change, error) {
 		return nil, audit.Save(auditPath(m.Project), now)
 	}
 	return audit.Diff(base, now), nil
+}
+
+// auditChangesRO is auditChanges without the write: it never records a baseline.
+// hasBaseline is false when there is none yet, and then there are no changes.
+func auditChangesRO(m *sandbox.Manager) (changes []audit.Change, hasBaseline bool, err error) {
+	now, base, err := auditSnapshots(m)
+	if err != nil || base == nil {
+		return nil, false, err
+	}
+	return audit.Diff(base, now), true, nil
+}
+
+// auditSnapshots reads the project now and the recorded baseline (nil if none).
+func auditSnapshots(m *sandbox.Manager) (now, base *audit.Snapshot, err error) {
+	now, err = audit.Take(m.Project.Root, m.Config.Config.Audit.ExtraPatterns)
+	if err != nil {
+		return nil, nil, err
+	}
+	base, err = audit.Load(auditPath(m.Project))
+	return now, base, err
 }
 
 // auditAtStart runs when a session starts: it makes sure a baseline exists and

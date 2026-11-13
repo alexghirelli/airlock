@@ -262,11 +262,28 @@ func SetFocus(path, text string) error {
 
 // Focus returns the focus set with SetFocus, without its heading.
 func Focus(path string) string {
-	b, err := os.ReadFile(filepath.Join(AdminDir(path), focusFile))
+	admin := AdminDir(path)
+	if admin == "" { // not a linked worktree: never read a file from the working directory
+		return ""
+	}
+	b, err := os.ReadFile(filepath.Join(admin, focusFile))
 	if err != nil {
 		return ""
 	}
 	return strings.TrimSpace(strings.TrimPrefix(string(b), "# Focus of this worktree"))
+}
+
+// Brief returns the task that `wt review` wrote for a worktree, or "" when there is none.
+func Brief(path string) string {
+	admin := AdminDir(path)
+	if admin == "" {
+		return ""
+	}
+	b, err := os.ReadFile(filepath.Join(admin, briefFile))
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
 
 // Entry is one linked worktree.
