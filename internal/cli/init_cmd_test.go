@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode"
 )
 
 // runInit runs `airlock init` through Main with HOME and the config locations in a
@@ -158,5 +159,126 @@ func TestInitBadPath(t *testing.T) {
 	code, _, _ := runInit(t, filepath.Join(t.TempDir(), "missing"))
 	if code != 2 {
 		t.Errorf("missing path: exit %d, want 2", code)
+	}
+}
+
+// hostileRune reports whether a terminal would act on r. The newline and the tab
+// are the only ones init prints by itself.
+func hostileRune(r rune) bool {
+	switch {
+	case r == '\n' || r == '\t':
+		return false
+	case r < 0x20, r == 0x7f, r >= 0x80 && r <= 0x9f, r == 0x2028, r == 0x2029:
+		return true
+	}
+	return unicode.Is(unicode.Cf, r)
+}
+
+// TestInitHostileRepository runs init on repositories whose names and values
+// carry escape sequences, C1 controls, bidi overrides and line breaks. Text and
+// --json output must hold no such rune and no line that a repository value
+// starts by itself. What is still safe to show must still show.
+func TestInitHostileRepository(t *testing.T) {
+	compose := func(image string) string { return "services:\n  db:\n    image: " + image + "\n" }
+	cases := []struct {
+		name    string
+		files   map[string]string
+		want    []string // substrings that must appear, in text and in JSON
+		noStart []string // no output line may start with one of these
+	}{
+		{
+			name:  "OSC 52 clipboard write and CSI clear in an image",
+			files: map[string]string{"compose.yaml": compose("postgres\x1b]52;c;ZWNobyBoaQ==\x07\x1b[2J")},
+		},
+		{
+			name:  "C1 CSI U+009B in an image",
+			files: map[string]string{"compose.yaml": compose("postgres\u009b2J")},
+		},
+		{
+			name:  "10 KB image value",
+			files: map[string]string{"compose.yaml": compose(strings.Repeat("a", 10000) + "postgres")},
+		},
+		{
+			name:  "bidi override in a folder that holds a database",
+			files: map[string]string{"db\u202egnp/compose.yaml": compose("postgres:16")},
+			want:  []string{"postgres:16 in db"},
+		},
+		{
+			name:  "escape sequence in a folder that holds a database",
+			files: map[string]string{"\x1b[2Jdb/compose.yaml": compose("mariadb:11")},
+			want:  []string{"mariadb:11 in db/compose.yaml"},
+		},
+		{
+			name:  "U+2028 in a folder that holds a database",
+			files: map[string]string{"a\u2028b/compose.yaml": compose("redis:7")},
+			want:  []string{"redis:7 in ab/compose.yaml"},
+		},
+		{
+			name: "newline in a secret-looking file name",
+			files: map[string]string{
+				"evil\nkey.pem":   "x",
+				"good.pem":        "x",
+				"carriage\rr.pem": "x",
+			},
+			want:    []string{"good.pem", "2 file(s) with unusual names skipped"},
+			noStart: []string{"key.pem", "r.pem", "evil"},
+		},
+		{
+			name:  "bidi override in a secret-looking file name",
+			files: map[string]string{"\u202eexe.pem": "x"},
+			want:  []string{"1 file(s) with unusual names skipped"},
+		},
+		{
+			name:  "escape sequence in engines.node",
+			files: map[string]string{"package.json": `{"engines":{"node":">=20 <\u001b]52;c;QQ==\u0007"}}`},
+		},
+		{
+			name:  "control character in requires-python",
+			files: map[string]string{"pyproject.toml": "[project]\nrequires-python = \">=3.11\u001b[2J\"\n"},
+		},
+	}
+	for _, tc := range cases {
+		for _, args := range [][]string{nil, {"--json"}} {
+			label := tc.name
+			if args != nil {
+				label += " (json)"
+			}
+			t.Run(label, func(t *testing.T) {
+				dir := writeProject(t, tc.files)
+				code, out, errOut := runInit(t, append([]string{dir}, args...)...)
+				if code != 0 {
+					t.Fatalf("exit %d, stderr %q", code, errOut)
+				}
+				for _, stream := range []string{out, errOut} {
+					for _, r := range stream {
+						if hostileRune(r) {
+							t.Fatalf("output has rune %U: %q", r, stream)
+						}
+					}
+				}
+				if args != nil {
+					var rep map[string]any
+					if err := json.Unmarshal([]byte(out), &rep); err != nil {
+						t.Fatalf("invalid JSON: %v\n%s", err, out)
+					}
+				}
+				for _, w := range tc.want {
+					if !strings.Contains(out, w) {
+						t.Errorf("output lacks %q:\n%s", w, out)
+					}
+				}
+				for _, line := range strings.Split(out, "\n") {
+					trimmed := strings.TrimLeft(line, " \t")
+					for _, s := range tc.noStart {
+						if strings.HasPrefix(trimmed, s) {
+							t.Errorf("a line starts with %q from the repository:\n%s", s, out)
+						}
+					}
+				}
+				if len(out) > 4096 {
+					t.Errorf("output is %d bytes", len(out))
+				}
+			})
+		}
 	}
 }

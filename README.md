@@ -442,7 +442,9 @@ it came from. Toolchains that a version file already pins (`.nvmrc`, `.python-ve
 Ruby, Rust and PHP (PHP comes from apt: mise would compile it for minutes). It writes at
 the repository root, also when you run it inside a worktree. It refuses to overwrite an
 existing file, and never writes through a symlink, even with `--force`; `--json` only
-prints the result.
+prints the result. The project is untrusted, so what init prints is cleaned of control
+characters, escape sequences and bidi overrides, and a secret-looking file whose name
+holds a line break or such a character is counted, not listed.
 
 Services are matched by name: an image whose last path segment contains `mariadb`,
 `mysql`, `postgres`, `postgis`, `redis`, `valkey`, `memcached`, `mongo`, `elasticsearch`,
