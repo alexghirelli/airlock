@@ -9,6 +9,10 @@ welcome, especially:
   declared `ro`);
 - a project's `.airlock.toml` taking effect beyond its allowed keys;
 - credentials or tokens leaking between sandboxes or to the host.
+- the host running a program that a sandbox wrote into a repository (through
+  git's own discovery, a `commondir` or a worktree's `.git` file, or config and
+  attributes it can reach): `airlock summary`, `wt`, `remote` and `review` must
+  run git only through `internal/hostgit`.
 
 Please report privately to the repository owner rather than opening a public
 issue, and include the airlock version, the engine (Docker version, rootless or

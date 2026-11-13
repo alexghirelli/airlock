@@ -620,6 +620,25 @@ How:
   files, `package.json`/`composer.json` scripts and new executables. It reports; it
   does not revert. The baseline moves only when you run `airlock audit --accept`.
 
+The host runs git too, on the repository the agent writes to. `airlock summary`,
+`wt`, `remote` and `review` run git on your checkout and its worktrees, and git
+on its own finds a repository from the folder it runs in and reads its config,
+attributes and hooks from wherever it lands. A `.git` the agent rewrote could
+therefore make your git run its commands. `internal/hostgit` is the only host
+path to git: it pins the git directory, the common directory and the working tree
+to paths derived from your checkout, refuses a `commondir` file or a `.git` that
+is not a directory, and never follows the `.git` file of a worktree in a worktrees folder. It also turns off
+what would run code (fsmonitor, hooks, ssh, filters, textconv, external diffs) on
+every call, and it runs on a snapshot of HEAD and the index when
+`extensions.worktreeConfig` is set, because the `config.worktree` of the main
+checkout is not protected. The main checkout's `.git` is a mount point in its
+sandbox, so the agent cannot rename it and put its own in place. What is left: the
+trust a worktree gets comes from its folder (`.worktrees` or `.isolated`), so run
+airlock from the project root, and a `sandbox.worktrees_dir` other than those
+names is not recognised as a worktrees folder. Your own global git configuration
+and environment are trusted; the system git configuration is not read by these
+calls.
+
 What it does **not** protect against:
 
 - **Data leaving over the internet.** The default network mode lets the agent reach

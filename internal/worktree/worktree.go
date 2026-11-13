@@ -4,17 +4,18 @@
 package worktree
 
 import (
-	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"math/rand"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/alexghirelli/airlock/internal/hostgit"
 )
 
 // Repo is the main repository and the directory its worktrees live in.
@@ -99,10 +100,16 @@ func AdminDir(root string) string {
 }
 
 func (r *Repo) git(dir string, args ...string) (string, error) {
+	return r.gitWithRetry(dir, hostgit.Options{}, args...)
+}
+
+// gitWithRetry is git with options, asking again while git reports a transient
+// failure.
+func (r *Repo) gitWithRetry(dir string, o hostgit.Options, args ...string) (string, error) {
 	var out string
 	var err error
 	for attempt := 1; ; attempt++ {
-		if out, err = r.gitOnce(dir, args...); err == nil || attempt == 10 || !transient(err) {
+		if out, err = r.gitWith(dir, o, args...); err == nil || attempt == 10 || !transient(err) {
 			return out, err
 		}
 		// Another airlock (or git) is writing in the same repository, as when two
@@ -151,19 +158,24 @@ func (r *Repo) worktreeAdd(args ...string) error {
 	})
 }
 
+// networkOpts is for the calls that talk to a remote: they may take longer.
+var networkOpts = hostgit.Options{Timeout: 10 * time.Minute}
+
+// gitOnce runs git in dir, a checkout of the repository, through hostgit: git
+// never finds the repository by itself from dir.
 func (r *Repo) gitOnce(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "LC_ALL=C")
-	var out, errb bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &errb
-	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(errb.String())
-		if msg == "" {
-			msg = err.Error()
-		}
-		return "", fmt.Errorf("git %s: %s", args[0], msg)
+	return r.gitWith(dir, hostgit.Options{}, args...)
+}
+
+// gitWith is gitOnce with options. Options.Writes is set for the calls that
+// change a worktree's index or HEAD.
+func (r *Repo) gitWith(dir string, o hostgit.Options, args ...string) (string, error) {
+	loc, err := hostgit.Open(r.Root, dir)
+	if err != nil {
+		return "", err
 	}
-	return strings.TrimSpace(out.String()), nil
+	out, err := loc.Output(context.Background(), o, args...)
+	return strings.TrimSpace(out), err
 }
 
 func (r *Repo) ok(dir string, args ...string) bool {

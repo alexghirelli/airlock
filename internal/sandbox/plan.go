@@ -2,12 +2,12 @@ package sandbox
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -18,6 +18,7 @@ import (
 	"github.com/alexghirelli/airlock"
 	"github.com/alexghirelli/airlock/internal/backend"
 	"github.com/alexghirelli/airlock/internal/config"
+	"github.com/alexghirelli/airlock/internal/hostgit"
 	"github.com/alexghirelli/airlock/internal/version"
 	"github.com/alexghirelli/airlock/internal/worktree"
 )
@@ -45,8 +46,8 @@ type Host struct {
 	// SELinux is true when the engine enforces SELinux (bind mounts then need
 	// labels disabled to be readable).
 	SELinux bool
-	// GitConfig returns a git setting as seen from dir ("" if unset).
-	GitConfig func(dir, key string) string
+	// GitConfig returns a git setting of the project's repository ("" if unset).
+	GitConfig func(p *Project, key string) string
 }
 
 // DefaultHost describes the current machine.
@@ -58,13 +59,18 @@ func DefaultHost() Host {
 	return Host{UID: uid, GID: gid, Getenv: os.Getenv, GitConfig: gitConfig}
 }
 
-func gitConfig(dir, key string) string {
-	cmd := exec.Command("git", "-C", dir, "config", "--get", key)
-	out, err := cmd.Output()
+// gitConfig reads a setting through hostgit: the repository of the project,
+// never one that git finds from the project's folder.
+func gitConfig(p *Project, key string) string {
+	loc, err := hostgit.Open(p.RepoRoot(), p.Root)
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(string(out))
+	out, err := loc.Output(context.Background(), hostgit.Options{}, "config", "--get", key)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
 }
 
 // Plan is everything needed to create and start a project's sandbox.
@@ -147,6 +153,15 @@ func BuildPlan(in PlanInput) (*Plan, error) {
 	var binds []backend.Bind
 	tmpfs := map[string]string{"/run": "rw,nosuid,nodev,mode=0755,size=64m"}
 	binds = append(binds, backend.Bind{Source: p.Root, Target: p.Path})
+	// The main checkout's .git is a mount point too. Inside the project's own
+	// mount it is an ordinary directory, and the agent could rename it and
+	// create a new one: the host would then run git on a .git the agent wrote.
+	// A mount point cannot be renamed or removed.
+	if gd := p.GitDir(); !p.IsWorktree() {
+		if st, err := os.Lstat(gd); err == nil && st.IsDir() {
+			binds = append(binds, backend.Bind{Source: gd, Target: containerPath(gd)})
+		}
+	}
 	if p.IsWorktree() {
 		// A worktree sees only itself and the repository's git directory,
 		// which its .git file points to by absolute path.
@@ -158,7 +173,7 @@ func BuildPlan(in PlanInput) (*Plan, error) {
 		// worktrees next to the folder share this sandbox and stay visible.
 		tmpfs[path.Join(p.Path, wt, worktree.IsolatedDir)] = "ro,nosuid,nodev,noexec,size=4k"
 	}
-	worktreeConfig := host.gitConfig(p.RepoRoot(), "extensions.worktreeConfig") == "true"
+	worktreeConfig := host.gitConfig(p, "extensions.worktreeConfig") == "true"
 	for _, g := range gitProtectedPaths(p, worktreeConfig) {
 		binds = append(binds, backend.Bind{Source: g.host, Target: g.container, ReadOnly: true})
 	}
@@ -255,8 +270,8 @@ func BuildPlan(in PlanInput) (*Plan, error) {
 	man := manifest{Version: 1, ProjectDir: p.Path, UI: c.Sandbox.UI, Mise: dedupe(append(append([]string(nil), c.Extras.Mise...), res.ProjectExtras.Mise...))}
 	man.Git.Mode = c.Git.Mode
 	man.Git.Hosts = c.Git.Hosts
-	man.Git.Name = host.gitConfig(p.Root, "user.name")
-	man.Git.Email = host.gitConfig(p.Root, "user.email")
+	man.Git.Name = host.gitConfig(p, "user.name")
+	man.Git.Email = host.gitConfig(p, "user.email")
 	man.Pi.Packages = c.Pi.Packages
 	man.Pi.MCP = mcp
 	man.Setup = c.Setup
@@ -340,11 +355,11 @@ func BuildPlan(in PlanInput) (*Plan, error) {
 	return plan, nil
 }
 
-func (h Host) gitConfig(dir, key string) string {
+func (h Host) gitConfig(p *Project, key string) string {
 	if h.GitConfig == nil {
 		return ""
 	}
-	return h.GitConfig(dir, key)
+	return h.GitConfig(p, key)
 }
 
 type protectedPath struct{ host, container string }

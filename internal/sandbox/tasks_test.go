@@ -20,9 +20,7 @@ func mkIsolatedWorktree(t *testing.T, root, name string) *Project {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(wt, ".git"), []byte("gitdir: "+admin+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	linkWorktree(t, wt, admin) // the file and the admin directory's back-references, as git writes them
 	p, err := Resolve(wt)
 	if err != nil {
 		t.Fatal(err)
