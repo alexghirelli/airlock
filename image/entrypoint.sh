@@ -17,6 +17,15 @@
 #   AIRLOCK_UID/GID      host user ids
 set -euo pipefail
 
+# This script is root with NET_ADMIN, and it runs again at every restart of the
+# container, before the firewall is back. The image's PATH starts with folders the
+# agent can write (~/.local/bin and the mise shims, the latter on a volume shared by
+# all projects), so every program looked up through it here, from `id` to `iptables`,
+# would be the agent's. Everything below uses root-owned folders only; the agent's
+# own PATH is put back for the process that is handed over at the end.
+AGENT_PATH="$PATH"
+export PATH=/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin
+
 say() { echo "airlock: $*" >&2; }
 die() { say "$*"; exit 1; }
 
@@ -199,9 +208,9 @@ main() {
   echo "${AIRLOCK_NET_MODE:-open-no-lan}" >/run/airlock/net-mode
 
   gid="$(id -g agent)"
-  exec setpriv --reuid agent --regid "$gid" --init-groups \
+  exec /usr/bin/setpriv --reuid agent --regid "$gid" --init-groups \
     --bounding-set -net_admin,-net_raw \
-    /usr/local/bin/airlock-init "$@"
+    /usr/bin/env "PATH=$AGENT_PATH" /usr/local/bin/airlock-init "$@"
 }
 
 # Sourcing the file (tests) only defines the functions.
