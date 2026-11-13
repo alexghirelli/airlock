@@ -71,6 +71,15 @@ var pins = []string{
 	"-c", "diff.external=",
 	"-c", "core.attributesFile=/dev/null",
 	"-c", "diff.relative=false",
+	// A nested repository (a gitlink in the tree) has its own configuration inside the
+	// working tree, which the agent writes. Git would start a child process there to
+	// ask whether the submodule is dirty, and a clean or smudge filter defined in that
+	// configuration would run on the host. Submodules are never looked into.
+	"-c", "diff.ignoreSubmodules=all",
+	"-c", "status.submoduleSummary=false",
+	"-c", "submodule.recurse=false",
+	"-c", "fetch.recurseSubmodules=false",
+	"-c", "push.recurseSubmodules=no",
 }
 
 // strippedVars are the environment variables that point git at another

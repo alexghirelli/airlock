@@ -281,7 +281,7 @@ func (r *Repo) List() ([]Entry, error) {
 	var cur *Entry
 	flush := func() {
 		if cur != nil && cur.Path != r.Root {
-			st, _ := r.git(cur.Path, "status", "--porcelain")
+			st, _ := r.git(cur.Path, "status", "--porcelain", "--ignore-submodules=all")
 			cur.Dirty = st != ""
 			entries = append(entries, *cur)
 		}
@@ -327,7 +327,7 @@ func (r *Repo) Remove(name string, force bool) (branch string, err error) {
 	}
 	branch, _ = r.git(path, "branch", "--show-current")
 	if !force {
-		if st, _ := r.git(path, "status", "--porcelain"); st != "" {
+		if st, _ := r.git(path, "status", "--porcelain", "--ignore-submodules=all"); st != "" {
 			return branch, fmt.Errorf("%s has uncommitted changes; commit or discard them, or use --force", name)
 		}
 	}

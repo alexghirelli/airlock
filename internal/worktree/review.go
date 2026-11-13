@@ -509,7 +509,7 @@ func (r *Repo) moveTo(path, branch string, c Change, sha string) string {
 		return fmt.Sprintf("%s has local commits, so it was left alone. To put them on %s: git -C %s rebase --onto %s %s",
 			branch, c.version(), path, shortOr(sha, ""), shortOr(anchor, ""))
 	}
-	dirty, _ := r.git(path, "status", "--porcelain")
+	dirty, _ := r.git(path, "status", "--porcelain", "--ignore-submodules=all")
 	if dirty != "" {
 		return fmt.Sprintf("%s has uncommitted changes, so it was left on its old version; commit or discard them and run this again", path)
 	}
