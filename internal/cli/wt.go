@@ -16,7 +16,7 @@ import (
 
 const wtUsage = `usage: airlock wt add <name> [focus...] [-b branch] [--from ref]
        airlock review <change|pr:N|mr:N|bb:N|url> [focus...]
-       airlock wt open <name> | focus <name> [text] | ls | rm <name> [--force]
+       airlock wt open <name> | focus <name> [text] | ls | rm <name> [--force] | prune [--force]
        (add, review: --shared or --isolated, --no-attach)`
 
 // cmdWt manages the git worktrees of the repository around the current
@@ -43,7 +43,7 @@ func (e *env) cmdWt(ctx context.Context) (int, error) {
 	if sub != "ls" && sub != "list" && repo.Dir == "" {
 		return 2, errors.New("worktrees are disabled (sandbox.worktrees_dir is empty)")
 	}
-	if len(args) == 0 && sub != "ls" && sub != "list" {
+	if len(args) == 0 && sub != "ls" && sub != "list" && sub != "prune" {
 		return 2, errors.New(wtUsage)
 	}
 
@@ -116,6 +116,9 @@ func (e *env) cmdWt(ctx context.Context) (int, error) {
 
 	case "rm", "remove":
 		return e.wtRemove(ctx, repo, l, args[0])
+
+	case "prune":
+		return e.wtPrune(repo)
 	}
 	return 2, fmt.Errorf("unknown wt command %q\n%s", sub, wtUsage)
 }
@@ -245,6 +248,31 @@ func firstLine(s string, max int) string {
 		s = string(r[:max-1]) + "…"
 	}
 	return s
+}
+
+// wtPrune lists the worktrees whose folder was deleted by hand and, with --force,
+// forgets them (the branches stay). `airlock gc` removes the sandboxes they had.
+func (e *env) wtPrune(repo *worktree.Repo) (int, error) {
+	stale, err := repo.Stale()
+	if err != nil {
+		return 1, err
+	}
+	if len(stale) == 0 {
+		fmt.Fprintln(e.stdout, "no stale worktrees")
+		return 0, nil
+	}
+	for _, w := range stale {
+		fmt.Fprintf(e.stdout, "stale: %s  %s  %s\n", w.Name, w.Branch, w.Path)
+	}
+	if !e.a.force {
+		e.errf("airlock: nothing was removed; run airlock wt prune --force to forget these (their branches stay)")
+		return 0, nil
+	}
+	if err := repo.PruneStale(stale); err != nil {
+		return 1, err
+	}
+	e.errf("airlock: forgot %d worktree(s)", len(stale))
+	return 0, nil
 }
 
 func (e *env) wtRemove(ctx context.Context, repo *worktree.Repo, l *loaded, name string) (int, error) {

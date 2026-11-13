@@ -35,6 +35,7 @@ Usage:
   airlock wt open <name>       come back to a worktree
   airlock wt focus <name> [text]  show / set / clear (text "") what its agent concentrates on
   airlock wt [ls] | rm <name>  list worktrees / remove one (--force with changes)
+  airlock wt prune [--force]   forget worktrees whose folder was deleted by hand (branches stay)
   airlock rm --purge           also delete this project's own credentials volume (credentials.scope = per-project)
   airlock ls                   list sandboxes
   airlock gc [--force]         list (or with --force remove) what deleted projects and old releases left behind

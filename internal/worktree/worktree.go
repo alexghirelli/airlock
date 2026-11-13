@@ -355,3 +355,30 @@ func (r *Repo) Remove(name string, force bool) (branch string, err error) {
 	})
 	return branch, err
 }
+
+// Stale returns the linked worktrees whose folder is gone from the disk (deleted
+// by hand). airlock locks its worktrees, so `git worktree prune` leaves them be.
+func (r *Repo) Stale() ([]Entry, error) {
+	list, err := r.List()
+	if err != nil {
+		return nil, err
+	}
+	var stale []Entry
+	for _, w := range list {
+		if _, err := os.Stat(w.Path); errors.Is(err, os.ErrNotExist) {
+			stale = append(stale, w)
+		}
+	}
+	return stale, nil
+}
+
+// PruneStale forgets the worktrees Stale returns. Their branches are kept.
+func (r *Repo) PruneStale(stale []Entry) error {
+	return r.withLock(func() error {
+		for _, w := range stale {
+			_ = r.ok(r.Root, "worktree", "unlock", w.Path)
+		}
+		_, err := r.git(r.Root, "worktree", "prune")
+		return err
+	})
+}
