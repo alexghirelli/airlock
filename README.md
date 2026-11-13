@@ -68,6 +68,7 @@ airlock shell [path]         open a shell in it
 airlock exec [path] -- cmd   run a command in it
 airlock stop|rm [path]       stop it (tools stay) / delete it (--purge: and its own logins)
 airlock wt add|open|focus|rm | airlock review <change>   worktrees and Gerrit reviews
+airlock summary [worktree]   what a worktree changed, before you trust or merge it (--json)
 airlock ls                   list sandboxes
 airlock inbox [--watch]      the agents that need you, across sandboxes (--watch: notify)
 airlock gc [--force]         list (--force: remove) what deleted projects and old releases left behind
@@ -149,6 +150,30 @@ airlock wt prune                           # list worktrees whose folder you del
   Pi reads both every time it starts in the worktree, so every new session there has
   its scope, and `wt focus` applies to the next one. They are files in the worktree's
   git directory, not in the checkout, so they never show in `git status`.
+
+### Before you merge: `airlock summary`
+
+```sh
+airlock summary rate-limit      # commits past the base, files, uncommitted and untracked, focus
+airlock summary                 # the same for the worktree or project you are in
+airlock summary --json          # the same data for scripts
+```
+
+- The base is the branch's upstream if it has one, else the remote's default branch
+  (`origin/HEAD`), else the first of `origin/main`, `origin/master`, `main`, `master` that
+  exists. A review branch has no upstream, so it uses the default branch. A pushed feature
+  branch whose upstream is its own copy on the remote (`git push -u origin feature`) is not
+  used as the base: the default branch is. `git push -u origin feature:other-name` is not
+  detected, so its base is that branch's own tip and only the uncommitted changes show.
+- Files are what `git diff` shows against the merge-base: committed and uncommitted changes
+  to tracked files, with added and deleted lines. Binary files are marked, not counted.
+  Untracked files are listed (the first 50), not read.
+- It does not show the content of the changes (`git diff <base>` does), whether the tests
+  pass, or what the agent said. The audit line is project-wide, not about one worktree; it
+  is read without recording a baseline, so `airlock audit --accept` is still what
+  acknowledges changes.
+- Everything it prints from the worktree (focus, commit subjects, names) is escaped, so an
+  escape sequence or a bidi character in them does not reach your terminal.
 
 ### Keeping a worktree apart
 
