@@ -34,6 +34,9 @@ type initReport struct {
 	Secrets     []string        `json:"secrets,omitempty"`
 	Suggestions []string        `json:"suggestions,omitempty"`
 	Config      string          `json:"config,omitempty"`
+	// Snippet is a per-project file for the user's config directory. It is
+	// printed, never written.
+	Snippet string `json:"snippet,omitempty"`
 }
 
 // cleanReport is the one place where what init prints is made safe. Almost all
@@ -55,11 +58,12 @@ func cleanReport(r initReport) initReport {
 		return out
 	}
 	f := detect.Findings{
-		Mise:   props(r.Findings.Mise),
-		Apt:    props(r.Findings.Apt),
-		MCP:    mapStrings(r.Findings.MCP, field),
-		Agents: mapStrings(r.Findings.Agents, field),
-		Notes:  mapStrings(r.Findings.Notes, sentence),
+		Mise:      props(r.Findings.Mise),
+		Apt:       props(r.Findings.Apt),
+		MCP:       mapStrings(r.Findings.MCP, field),
+		Agents:    mapStrings(r.Findings.Agents, field),
+		Notes:     mapStrings(r.Findings.Notes, sentence),
+		MediaWiki: r.Findings.MediaWiki,
 	}
 	for _, p := range r.Findings.Pinned {
 		f.Pinned = append(f.Pinned, detect.Pin{Tool: field(p.Tool), File: field(p.File)})
@@ -73,7 +77,74 @@ func cleanReport(r initReport) initReport {
 		Secrets:     mapStrings(r.Secrets, field),
 		Suggestions: mapStrings(r.Suggestions, sentence),
 		Config:      cleanBlock(r.Config),
+		Snippet:     cleanBlock(r.Snippet),
 	}
+}
+
+// mediaWikiSnippet is the per-project file for a MediaWiki checkout: the trusted
+// layer of the user's config directory, with the worktree links MediaWiki needs
+// and a commented runner for `airlock wt run`. It is printed for the user to
+// paste, and nothing writes it.
+func mediaWikiSnippet(root string) string {
+	return strings.Join([]string{
+		"# " + inbox.Clean(tildePath(config.UserConfigDir()), maxField) + "/projects/<name>.toml (not written)",
+		matchLine(tildePath(root)),
+		"",
+		"[sandbox]",
+		`worktree_link = ["LocalSettings.php", "vendor", "extensions/*", "skins/*"]`,
+		"",
+		"# The container you run the tests in (docker ps lists it). A compose form also",
+		`# exists: compose = ["..."] with service = "mediawiki" (see the README).`,
+		"# [[runner]]",
+		`# name      = "mw"`,
+		`# container = "mw-core-mediawiki-1"`,
+		`# mount     = "/var/www/html/w"`,
+	}, "\n")
+}
+
+// matchLine is the match key for a project path, as a list, which is the form the
+// per-project files take. Glob characters are escaped the way filepath.Match reads
+// them. A path with control or format characters is not rewritten: the user types
+// it in.
+func matchLine(p string) string {
+	if inbox.Clean(p, 0) != p {
+		return "# the path has characters that cannot be shown here: write it by hand\nmatch = [\"<edit by hand>\"]"
+	}
+	var b strings.Builder
+	escaped := false
+	for _, r := range p {
+		if strings.ContainsRune(`*?[\`, r) {
+			b.WriteRune('\\')
+			escaped = true
+		}
+		b.WriteRune(r)
+	}
+	line := "match = [" + tomlString(b.String()) + "]"
+	if escaped {
+		line += "  # glob characters in the path are escaped with a backslash"
+	}
+	return line
+}
+
+// tildePath shows a path under the home directory with a leading ~.
+func tildePath(p string) string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return p
+	}
+	if p == home {
+		return "~"
+	}
+	if rest, ok := strings.CutPrefix(p, home+string(filepath.Separator)); ok {
+		return "~" + string(filepath.Separator) + rest
+	}
+	return p
+}
+
+// tomlString quotes s as a TOML basic string. The caller has cleaned s of control
+// characters, so only the quote and the backslash need escaping.
+func tomlString(s string) string {
+	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + `"`
 }
 
 // mapStrings applies clean to each string, keeping nil as nil.
@@ -118,7 +189,11 @@ func (e *env) cmdInit() (int, error) {
 			"secrets: %d file(s) with unusual names skipped; they are not listed (rename them, or add them to .airlockignore by hand)", skipped))
 	}
 	path := filepath.Join(root, config.ProjectConfigName)
-	rep := cleanReport(initReport{Path: path, Findings: f, Secrets: secrets, Suggestions: suggestions, Config: detect.Render(f)})
+	snippet := ""
+	if f.MediaWiki {
+		snippet = mediaWikiSnippet(root)
+	}
+	rep := cleanReport(initReport{Path: path, Findings: f, Secrets: secrets, Suggestions: suggestions, Config: detect.Render(f), Snippet: snippet})
 	text := rep.Config
 	shown := rep.Path
 
@@ -149,6 +224,11 @@ func (e *env) cmdInit() (int, error) {
 		fmt.Fprintln(e.stdout, "airlock: for your user config (airlock config edit) and .airlockignore:")
 		for _, s := range rep.Suggestions {
 			fmt.Fprintf(e.stdout, "  - %s\n", s)
+		}
+	}
+	if rep.Snippet != "" {
+		for _, line := range strings.Split(rep.Snippet, "\n") {
+			fmt.Fprintf(e.stdout, "    %s\n", line)
 		}
 	}
 

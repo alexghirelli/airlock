@@ -444,3 +444,26 @@ func TestSuggestions(t *testing.T) {
 		t.Errorf("capped suggestions = %q", capped)
 	}
 }
+
+func TestMediaWikiIsSuggestedOnlyForMediaWiki(t *testing.T) {
+	mw := Scan(fstest.MapFS{"composer.json": {Data: []byte(`{"name":"mediawiki/core"}`)}})
+	if !mw.MediaWiki {
+		t.Fatal("mediawiki/core not recognised")
+	}
+	found := false
+	for _, s := range Suggestions(mw, nil, false) {
+		found = found || strings.Contains(s, "mediawiki/core")
+	}
+	if !found {
+		t.Error("no mediawiki suggestion")
+	}
+	other := Scan(fstest.MapFS{"composer.json": {Data: []byte(`{"name":"acme/app"}`)}})
+	if other.MediaWiki {
+		t.Error("acme/app marked as MediaWiki")
+	}
+	for _, s := range Suggestions(other, nil, false) {
+		if strings.Contains(s, "mediawiki") {
+			t.Errorf("suggestion for a non-MediaWiki project: %q", s)
+		}
+	}
+}
