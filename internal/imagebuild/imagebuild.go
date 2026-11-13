@@ -118,6 +118,8 @@ func BaseContext() (io.Reader, error) {
 		{"image/npm-wrapper.sh", "npm-wrapper.sh"},
 		{"image/claude-wrapper.sh", "claude-wrapper.sh"},
 		{"image/agent-install.sh", "agent-install.sh"},
+		{"image/agent-session.sh", "agent-session.sh"},
+		{"image/idle-watch.sh", "idle-watch.sh"},
 	} {
 		data, err := airlock.Assets.ReadFile(f.src)
 		if err != nil {

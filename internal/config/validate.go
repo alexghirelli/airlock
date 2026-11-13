@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"time"
 )
 
 var (
@@ -71,6 +72,11 @@ func (c *Config) Validate() error {
 	}
 	if c.Sandbox.Pids <= 0 {
 		add(errors.New("sandbox.pids must be greater than 0"))
+	}
+	if s := c.Sandbox.IdleStop; s != "" {
+		if d, err := time.ParseDuration(s); err != nil || d < MinIdleStop {
+			add(fmt.Errorf("sandbox.idle_stop: %q is not a duration of at least %s, such as \"2h\" (empty = never)", s, MinIdleStop))
+		}
 	}
 	if d := c.Sandbox.WorktreesDir; d != "" {
 		if err := validRelDir(d); err != nil {

@@ -7,5 +7,5 @@ import "embed"
 // Assets holds image/ and team/. The build context for the base image is
 // assembled from it, so the binary can build the image on any machine.
 //
-//go:embed image/Dockerfile image/entrypoint.sh image/init.sh image/session.sh image/herdr-up.sh image/profile-path.sh image/pi-wrapper.sh image/npm-wrapper.sh image/claude-wrapper.sh image/agent-install.sh image/agent-session.sh image/AGENTS.md.tmpl image/skills team
+//go:embed image/Dockerfile image/entrypoint.sh image/init.sh image/session.sh image/herdr-up.sh image/profile-path.sh image/pi-wrapper.sh image/npm-wrapper.sh image/claude-wrapper.sh image/agent-install.sh image/agent-session.sh image/idle-watch.sh image/AGENTS.md.tmpl image/skills team
 var Assets embed.FS

@@ -4,6 +4,8 @@
 // config (untrusted, allowlisted), CLI flags, AIRLOCK_* environment variables.
 package config
 
+import "time"
+
 // Pinned versions of the tools baked into the image. "latest-pinned" in the
 // config resolves to these.
 const (
@@ -47,6 +49,22 @@ type Sandbox struct {
 	// sandbox of their own: none (all share the project's, one Herdr workspace
 	// each), reviews (only `wt review`) or all.
 	WorktreeIsolation string `toml:"worktree_isolation"`
+	// IdleStop stops the sandbox after this long with no terminal attached and no
+	// agent working ("2h"). Empty means never. airlock starts it again on demand.
+	IdleStop string `toml:"idle_stop"`
+}
+
+// MinIdleStop is the shortest idle_stop: a sandbox that stops after seconds would
+// cut off anyone who steps away to read.
+const MinIdleStop = 5 * time.Minute
+
+// IdleStopSeconds is idle_stop in seconds, 0 when the sandbox never stops by itself.
+func (c *Config) IdleStopSeconds() int {
+	d, err := time.ParseDuration(c.Sandbox.IdleStop)
+	if err != nil || c.Sandbox.IdleStop == "" {
+		return 0
+	}
+	return int(d / time.Second)
 }
 
 type Network struct {

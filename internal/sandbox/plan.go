@@ -249,6 +249,7 @@ func BuildPlan(in PlanInput) (*Plan, error) {
 	man.Pi.Packages = c.Pi.Packages
 	man.Pi.MCP = mcp
 	man.Setup = c.Setup
+	man.IdleStop = c.IdleStopSeconds()
 	man.Pi.Settings = piSettings(c)
 	man.ClaudeCode = c.NeedsClaudeCode()
 	man.Agent.Kind = c.Agent.Kind
@@ -402,6 +403,7 @@ type manifest struct {
 		MCP      map[string]any `json:"mcp"`
 	} `json:"pi"`
 	Mise       []string       `json:"mise"`
+	IdleStop   int            `json:"idle_stop_seconds"` // 0: the sandbox never stops by itself
 	Setup      []config.Setup `json:"setup"`
 	ClaudeCode bool           `json:"claude_code"`
 	Agent      struct {
