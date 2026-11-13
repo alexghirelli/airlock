@@ -41,8 +41,12 @@ func TestClassify(t *testing.T) {
 		}
 	}
 	_, raw := Classify(0, []byte(herdrSample))
-	if want := (Raw{Agent: "pi", AgentStatus: "idle", Cwd: "/tmp/tmp.VcCRbW9x3T/app", Name: "pi", PaneID: "w1:p1"}); len(raw) != 1 || raw[0] != want {
-		t.Errorf("parsed agent = %+v, want %+v", raw, want)
+	if len(raw) != 1 || raw[0].Agent != "pi" || raw[0].AgentStatus != "idle" || raw[0].Cwd != "/tmp/tmp.VcCRbW9x3T/app" || raw[0].Name != "pi" || raw[0].PaneID != "w1:p1" {
+		t.Errorf("parsed agent = %+v", raw)
+	}
+	// The transcript is kept too: the handoff briefing names it.
+	if len(raw) == 1 && (raw[0].AgentSession == nil || raw[0].AgentSession.Value != "/creds/pi-agent/sessions/--tmp-app--/2026-11-11T16-21-26-886Z_01a1.jsonl") {
+		t.Errorf("agent session = %+v", raw[0].AgentSession)
 	}
 }
 

@@ -239,15 +239,88 @@ func (r *Repo) protectConfig(path string) {
 // never show up in `git status`. Pi reads them (see image/pi-wrapper.sh) every
 // time it starts in the worktree.
 const (
-	briefFile = "airlock-review.md" // written by `wt review`
-	focusFile = "airlock-focus.md"  // written by the user
+	briefFile   = "airlock-review.md"  // written by `wt review`
+	focusFile   = "airlock-focus.md"   // written by the user
+	handoffFile = "airlock-handoff.md" // written by `wt handoff`, read by an agent that starts fresh
 )
 
-// SetFocus sets what the agent in a worktree concentrates on. Empty text clears it.
-func SetFocus(path, text string) error {
+// CheckedAdminDir is AdminDir for a write. The .git file of a worktree is
+// written by the agent that runs in it, so it can point anywhere, and an entry
+// under the repository's worktrees folder can be replaced by a link. So the
+// directory must really lie inside that folder once symlinks are resolved; the
+// resolved path is returned.
+func CheckedAdminDir(repoRoot, path string) (string, error) {
 	admin := AdminDir(path)
 	if admin == "" {
-		return fmt.Errorf("%s is not a linked worktree", path)
+		return "", fmt.Errorf("%s is not a linked worktree", path)
+	}
+	base, err := filepath.EvalSymlinks(filepath.Join(repoRoot, ".git", "worktrees"))
+	if err != nil {
+		return "", fmt.Errorf("the worktrees of %s: %w", repoRoot, err)
+	}
+	real, err := filepath.EvalSymlinks(admin)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", admin, err)
+	}
+	rel, err := filepath.Rel(base, real)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("%s is not a worktree of %s; refusing to write there", admin, repoRoot)
+	}
+	return real, nil
+}
+
+// WriteHandoff replaces the handoff briefing of a worktree. It is written to a
+// temporary file in the same folder and renamed over the old one, so an agent
+// that starts meanwhile reads the old briefing or the new one, never half of
+// one. An existing entry that is not a regular file (a symlink) is refused:
+// the folder is in the repository's .git, and a link there must not redirect
+// the write.
+func WriteHandoff(repoRoot, path, text string) error {
+	admin, err := CheckedAdminDir(repoRoot, path)
+	if err != nil {
+		return err
+	}
+	target := filepath.Join(admin, handoffFile)
+	if fi, err := os.Lstat(target); err == nil && !fi.Mode().IsRegular() {
+		return fmt.Errorf("%s is not a regular file; remove it first", target)
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	tmp, err := os.CreateTemp(admin, ".airlock-handoff-*.tmp")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name()) // a no-op once renamed
+	_, werr := tmp.WriteString(text)
+	if cerr := tmp.Close(); werr == nil {
+		werr = cerr
+	}
+	if werr == nil {
+		werr = os.Chmod(tmp.Name(), 0o644) // CreateTemp makes it 0600
+	}
+	if werr != nil {
+		return werr
+	}
+	return os.Rename(tmp.Name(), target)
+}
+
+// ClearHandoff deletes the handoff briefing of a worktree, if it has one.
+func ClearHandoff(repoRoot, path string) error {
+	admin, err := CheckedAdminDir(repoRoot, path)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(filepath.Join(admin, handoffFile)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
+// SetFocus sets what the agent in a worktree concentrates on. Empty text clears it.
+func SetFocus(repoRoot, path, text string) error {
+	admin, err := CheckedAdminDir(repoRoot, path)
+	if err != nil {
+		return err
 	}
 	f := filepath.Join(admin, focusFile)
 	text = strings.TrimSpace(text)

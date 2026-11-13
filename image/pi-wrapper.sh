@@ -10,7 +10,9 @@ case "${1:-}" in
      # The task of the git worktree Pi starts in (airlock wt review / wt focus):
      # files in the worktree's own git directory, so they stay out of `git status`.
      if gd="$(git rev-parse --absolute-git-dir 2>/dev/null)"; then
-       for f in airlock-review.md airlock-focus.md; do
+       # The handoff briefing (airlock wt handoff) stays until it is reset or replaced,
+       # like the focus: a resumed conversation gets it too.
+       for f in airlock-review.md airlock-focus.md airlock-handoff.md; do
          [[ -r "$gd/$f" ]] && args+=(--append-system-prompt "$gd/$f")
        done
      fi ;;

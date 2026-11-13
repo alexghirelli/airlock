@@ -70,7 +70,7 @@ airlock [path]               start or resume the sandbox for a project and attac
 airlock shell [path]         open a shell in it
 airlock exec [path] -- cmd   run a command in it
 airlock stop|rm [path]       stop it (tools stay) / delete it (--purge: and its own logins)
-airlock wt add|open|focus|rm | airlock review <change>   worktrees and Gerrit reviews
+airlock wt add|open|focus|handoff|rm | airlock review <change>   worktrees and Gerrit reviews
 airlock summary [worktree]   what a worktree changed, before you trust or merge it (--json)
 airlock ls                   list sandboxes
 airlock inbox [--watch]      the agents that need you, across sandboxes (--watch: notify)
@@ -116,6 +116,7 @@ airlock review https://gerrit.example.org/r/c/core/+/12345/3 "check the SQL"
 airlock wt                                 # worktrees, branches, changes, sandboxes, focus
 airlock wt open rate-limit                 # come back to one
 airlock wt focus rate-limit "now: the tests"   # change what its agent concentrates on
+airlock wt handoff rate-limit "start at the retry path"   # a new agent takes over, with a briefing
 airlock wt rm review-12345                 # remove the worktree, keep the branch
 airlock wt prune                           # list worktrees whose folder you deleted by hand (--force forgets them)
 ```
@@ -155,6 +156,44 @@ airlock wt prune                           # list worktrees whose folder you del
   Pi reads both every time it starts in the worktree, so every new session there has
   its scope, and `wt focus` applies to the next one. They are files in the worktree's
   git directory, not in the checkout, so they never show in `git status`.
+
+### Handing a worktree to a new agent: `wt handoff`
+
+When an agent is stuck, has run out of context, or another model would do better, hand
+the worktree over. The new agent (the same kind, or `--agent claude` / `--agent pi`)
+starts fresh with a briefing instead of from nothing:
+
+```sh
+airlock wt handoff rate-limit "the retry path still fails: start there"
+airlock wt handoff rate-limit --agent claude
+airlock wt handoff rate-limit --reset        # delete the briefing, do nothing else
+```
+
+- It refuses while the previous agent is still working, and when the sandbox's agent list
+  cannot be read (`--force` overrides both). The previous
+  agent is the one Herdr lists in the worktree's folder; none there is fine.
+- The briefing is `airlock-handoff.md` in the worktree's git directory, next to the focus,
+  so it never shows in `git status`. It opens with airlock's instruction to check the state
+  with git before changing anything, then your note, the transcript path of the previous
+  conversation (inside the sandbox, read if its reasoning is needed), and what `airlock summary`
+  says the worktree changed. Everything from the worktree is marked as data, not instructions.
+- The worktree's Herdr workspace is closed and a new agent starts in it with `--fresh`.
+  The agent gets the briefing in its system prompt. An agent that is resumed later with
+  `--continue` gets it too: the briefing is appended on every start, like the focus, until it is
+  reset or replaced. A conversation continued later reads the same briefing again.
+- The briefing stays until the next handoff overwrites it, `airlock wt handoff <name> --reset`
+  deletes it, or the worktree is removed. Until then every agent started in the worktree gets it,
+  so run `--reset` when the handoff is over.
+- It needs the Herdr UI (`sandbox.ui = "herdr"`).
+- Only one agent runs in a folder: while the new agent is in the worktree, `airlock wt open` goes
+  to it, whatever its kind. `--agent` applies to this handoff only. Once that agent is closed,
+  `wt open` starts the configured kind again, unless you pass `--agent` again.
+- With `--agent` a different kind than the configured one, airlock may print "the configuration
+  changed since ... run `airlock restart`" when it brings the sandbox up. For the agent kind alone
+  that is harmless: do not restart the sandbox for it.
+- Not tried end to end: there was no Docker to run the sandbox and Herdr in, so the listing
+  of agents, the closing and the fresh start in a real workspace have not run. The briefing,
+  the choice of previous agent, the refusal, the check after the close, the file handling, the wrappers and the one-agent-per-folder rule of `airlock-herdr-up` (against a stub Herdr) are tested.
 
 ### Before you merge: `airlock summary`
 
