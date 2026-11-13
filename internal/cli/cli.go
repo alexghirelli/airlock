@@ -37,6 +37,7 @@ Usage:
   airlock wt focus <name> [text]  show / set / clear (text "") what its agent concentrates on
   airlock wt [ls] | rm <name>  list worktrees / remove one (--force with changes)
   airlock wt prune [--force]   forget worktrees whose folder was deleted by hand (branches stay)
+  airlock wt run <runner> <worktree|.> [--print] -- <command> [args...]   run a command in a container you already have
   airlock summary [worktree]   what a worktree changed: commits, files, uncommitted and untracked (--json)
   airlock remote push|pull|open <host> [path]   keep the project on a server with git (see README)
   airlock rm --purge           also delete this project's own credentials volume (credentials.scope = per-project)
@@ -75,6 +76,7 @@ Flags:
   --config <file>    use this user config file
   --json             machine-readable output (ls, doctor, audit, inbox)
   --watch            inbox: keep polling and notify when an agent needs you
+  --print            wt run: print the docker command instead of running it
   --verbose, -v      show image build output and details
   --help, -h         show this help
 `
@@ -116,6 +118,11 @@ type args struct {
 	branch    string
 	from      string
 	help      bool
+	print     bool
+	// dashed is set when a "--" was given; afterDash is what follows it, and
+	// rest ends with afterDash.
+	dashed    bool
+	afterDash []string
 }
 
 func parseArgs(argv []string) (*args, error) {
@@ -136,6 +143,7 @@ func parseArgs(argv []string) (*args, error) {
 		arg := argv[i]
 		if arg == "--" {
 			a.rest = append(a.rest, argv[i+1:]...)
+			a.dashed, a.afterDash = true, argv[i+1:]
 			break
 		}
 		if strings.HasPrefix(arg, "-") && arg != "-" {
@@ -160,6 +168,8 @@ func parseArgs(argv []string) (*args, error) {
 				a.purge = true
 			case "--accept":
 				a.accept = true
+			case "--print":
+				a.print = true
 			case "--watch":
 				a.watch = true
 			case "--if-missing":

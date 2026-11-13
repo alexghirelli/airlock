@@ -4,7 +4,10 @@
 // config (untrusted, allowlisted), CLI flags, AIRLOCK_* environment variables.
 package config
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // Pinned versions of the tools baked into the image. "latest-pinned" in the
 // config resolves to these.
@@ -32,6 +35,7 @@ type Config struct {
 	Audit       Audit          `toml:"audit"`
 	Agents      Agents         `toml:"agents"`
 	Notify      Notify         `toml:"notify"`
+	Runners     []Runner       `toml:"runner"`
 
 	// AgentsMDAppend is a host path whose content is appended to the
 	// generated global agent instructions.
@@ -178,6 +182,48 @@ type Notify struct {
 	// Command is an argv, run with the title and the message appended. Empty
 	// means the desktop's own notifier (notify-send, osascript).
 	Command []string `toml:"command"`
+}
+
+// Runner is a container started outside airlock (a docker compose service, DDEV,
+// a plain container) in which the user runs a project's commands against one of
+// its worktrees: `airlock wt run`. Only the user's config and the trusted
+// per-project files may declare one; a project's .airlock.toml may not.
+type Runner struct {
+	Name string `toml:"name"`
+	// Compose is a compose file, or a list of them in order (each becomes its own
+	// -f), with Service. It is a string or a list of strings: use ComposeFiles.
+	Compose   any    `toml:"compose"`
+	Service   string `toml:"service"`   // compose service
+	Container string `toml:"container"` // or a running container's name
+	Mount     string `toml:"mount"`     // where the project root is mounted in the container
+	User      string `toml:"user"`      // optional, passed as docker's --user
+}
+
+// ComposeFiles is the compose file list of r, as written (not expanded): nil when
+// there is none. It fails when compose is neither a string nor a list of strings.
+func (r Runner) ComposeFiles() ([]string, error) {
+	switch v := r.Compose.(type) {
+	case nil:
+		return nil, nil
+	case string:
+		if v == "" {
+			return nil, nil
+		}
+		return []string{v}, nil
+	case []any:
+		files := make([]string, 0, len(v))
+		for _, e := range v {
+			s, ok := e.(string)
+			if !ok {
+				return nil, fmt.Errorf("compose must be a path or a list of paths")
+			}
+			files = append(files, s)
+		}
+		return files, nil
+	case []string:
+		return v, nil
+	}
+	return nil, fmt.Errorf("compose must be a path or a list of paths")
 }
 
 type Team struct {

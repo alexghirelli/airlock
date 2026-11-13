@@ -34,6 +34,9 @@ type Findings struct {
 	Agents []string `json:"agents,omitempty"`
 	// Notes are facts worth showing that do not change the file.
 	Notes []string `json:"notes,omitempty"`
+	// WebApp is set when composer.json names acme/webapp: init then
+	// suggests a per-project file with a [[runner]] for the checkout.
+	WebApp bool `json:"webapp,omitempty"`
 }
 
 // Pin is a toolchain that a version file already pins.
@@ -484,6 +487,7 @@ func (s *scan) composer() {
 	if c.Name == "acme/webapp" {
 		add("php-mysql", "composer.json: WebApp database driver")
 		add("php-sqlite3", "composer.json: WebApp database driver (SQLite needs no server)")
+		s.f.WebApp = true
 		s.f.Notes = append(s.f.Notes,
 			"WebApp needs a database. airlock runs no database containers yet: use SQLite, or a database on the host or LAN opened with network.allow_cidrs")
 	}

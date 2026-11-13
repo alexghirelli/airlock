@@ -444,3 +444,26 @@ func TestSuggestions(t *testing.T) {
 		t.Errorf("capped suggestions = %q", capped)
 	}
 }
+
+func TestWebAppIsSuggestedOnlyForWebApp(t *testing.T) {
+	mw := Scan(fstest.MapFS{"composer.json": {Data: []byte(`{"name":"acme/webapp"}`)}})
+	if !mw.WebApp {
+		t.Fatal("acme/webapp not recognised")
+	}
+	found := false
+	for _, s := range Suggestions(mw, nil, false) {
+		found = found || strings.Contains(s, "acme/webapp")
+	}
+	if !found {
+		t.Error("no webapp suggestion")
+	}
+	other := Scan(fstest.MapFS{"composer.json": {Data: []byte(`{"name":"acme/app"}`)}})
+	if other.WebApp {
+		t.Error("acme/app marked as WebApp")
+	}
+	for _, s := range Suggestions(other, nil, false) {
+		if strings.Contains(s, "webapp") {
+			t.Errorf("suggestion for a non-WebApp project: %q", s)
+		}
+	}
+}
