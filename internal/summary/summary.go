@@ -78,7 +78,9 @@ type Audit struct {
 }
 
 // Collect reads the checkout at path. name labels it; empty means its folder name.
-func Collect(path, name string) (*Summary, error) {
+// tasks is the worktree's task folder (see worktree.TaskDir), where its focus and
+// review come from; empty when it has none, as the main checkout.
+func Collect(path, name, tasks string) (*Summary, error) {
 	if name == "" {
 		name = filepath.Base(path)
 	}
@@ -133,8 +135,8 @@ func Collect(path, name string) (*Summary, error) {
 	}
 	s.Untracked = append(s.Untracked, list...)
 
-	s.Focus = worktree.Focus(path)
-	s.Review = worktree.Brief(path) != ""
+	s.Focus = worktree.Focus(tasks)
+	s.Review = worktree.Brief(tasks) != ""
 	return s, nil
 }
 

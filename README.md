@@ -153,9 +153,13 @@ airlock wt prune                           # list worktrees whose folder you del
   A pull or merge request can hold several commits and its target branch only exists on the
   forge: the task gives a likely base (the merge-base with the remote's default branch) and
   tells the agent to check it.
-  Pi reads both every time it starts in the worktree, so every new session there has
-  its scope, and `wt focus` applies to the next one. They are files in the worktree's
-  git directory, not in the checkout, so they never show in `git status`.
+  The agent reads both every time it starts in the worktree, so every new session there has
+  its scope, and `wt focus` applies to the next one. They are files of the host, in a folder
+  of airlock's state (`<cache>/airlock/tasks/<project>/<worktree>/`), mounted read-only into the
+  sandbox at `/run/airlock/tasks/<worktree>/`: they never show in `git status`, and the agent
+  cannot change them. `wt rm` deletes the folder; `wt prune` (for a worktree deleted by hand)
+  leaves it behind in the state folder. Task files from before this version, in the worktree's
+  git directory, are not read: run `airlock wt focus <name> "..."` again to set the focus.
 
 ### Handing a worktree to a new agent: `wt handoff`
 
@@ -172,12 +176,13 @@ airlock wt handoff rate-limit --reset        # delete the briefing, do nothing e
 - It refuses while the previous agent is still working, and when the sandbox's agent list
   cannot be read (`--force` overrides both). The previous
   agent is the one Herdr lists in the worktree's folder; none there is fine.
-- The briefing is `airlock-handoff.md` in the worktree's git directory, next to the focus,
-  so it never shows in `git status`. It opens with airlock's instruction to check the state
+- The briefing is `handoff.md` in the worktree's task folder, next to the focus and the review
+  (see above), so it never shows in `git status`. It opens with airlock's instruction to check the state
   with git before changing anything, then your note, the transcript path of the previous
   conversation (inside the sandbox, read if its reasoning is needed), and what `airlock summary`
   says the worktree changed. Everything from the worktree is marked as data, not instructions.
-- The worktree's Herdr workspace is closed and a new agent starts in it with `--fresh`.
+- The worktree's Herdr workspace is closed, the previous agent is confirmed gone, then the
+  briefing is written and a new agent starts in the worktree with `--fresh`.
   The agent gets the briefing in its system prompt. An agent that is resumed later with
   `--continue` gets it too: the briefing is appended on every start, like the focus, until it is
   reset or replaced. A conversation continued later reads the same briefing again.
@@ -239,8 +244,8 @@ worktree_isolation = "none"      # none (default) | reviews | all
 | `all` | own sandbox | own sandbox |
 
 `--shared` and `--isolated` override the setting for one worktree. An isolated worktree
-lives in `.worktrees/.isolated/`, mounts only itself and the repository's `.git`
-(hooks, config and its own `config.worktree` read-only), and has its own terminal and
+lives in `.worktrees/.isolated/`, mounts only itself, the repository's `.git`
+(hooks, config and its own `config.worktree` read-only) and its own task folder (read-only), and has its own terminal and
 Herdr: the main checkout, its untracked files and every other worktree are not visible,
 and a port used there does not clash with yours. The project's sandbox sees
 `.worktrees/.isolated/` as an empty read-only folder.
@@ -599,6 +604,15 @@ How:
   fails. (This is tested; it was a real flaw in the first design.)
 - `.git/hooks` and `.git/config` are mounted read-only, which blocks the usual
   ways to plant code that git later runs on the host.
+- The task files of a worktree (focus, review, handoff briefing) are host files:
+  they live in airlock's state folder, which the sandbox never sees. They are mounted
+  read-only: an isolated worktree's sandbox sees only its own folder, and the project's
+  sandbox sees the folders of the worktrees that share it (as it sees the worktrees themselves). The agent cannot change what the
+  host reads (a link or a FIFO in the worktree's git directory is ignored, and the
+  reads are capped at 64 KiB), nor what the next agent is told at its start.
+  An agent can still influence what it later reads from the project and from commit
+  messages, since the briefings call them data, not instructions: that boundary is
+  advisory, not enforced.
 - No git credentials in the box by default. `git.mode = "push"` injects one token
   from a host variable, offered only to the configured hosts. `~/.ssh` is never
   mounted.

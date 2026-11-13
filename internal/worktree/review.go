@@ -4,8 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -487,7 +485,11 @@ func (r *Repo) Review(c Change, name, branch string, isolated bool) (*ReviewResu
 			return res, err
 		}
 	}
-	return res, r.writeBrief(path, c, remote, sha, branch, res.Note)
+	dir, err := r.taskDir(name, isolated)
+	if err != nil {
+		return res, err
+	}
+	return res, r.writeBrief(dir, c, remote, sha, branch, res.Note)
 }
 
 // moveTo moves the branch to sha when that loses nothing, and says why not
@@ -549,14 +551,9 @@ func (r *Repo) guessBase(remote, sha string) string {
 // writeBrief describes the review the agent in this worktree is there to do. It
 // names the commit itself, not just the branch: if the branch could not be moved
 // (it existed, or has commits of its own), the review still looks at the right
-// change.
-func (r *Repo) writeBrief(path string, c Change, remote, sha, branch, note string) error {
-	// The brief is written through the checked admin directory: the worktree's .git
-	// file can be rewritten by an agent (see CheckedAdminDir).
-	admin, err := CheckedAdminDir(r.Root, path)
-	if err != nil {
-		return err
-	}
+// change. It goes to the worktree's task folder (see tasks.go), not into the
+// worktree, where the agent could change what the next start reads.
+func (r *Repo) writeBrief(dir string, c Change, remote, sha, branch, note string) error {
 	subject, _ := r.git(r.Root, "log", "-1", "--format=%s", sha)
 	author, _ := r.git(r.Root, "log", "-1", "--format=%an", sha)
 	short := shortOr(sha, "")
@@ -587,5 +584,5 @@ func (r *Repo) writeBrief(path string, c Change, remote, sha, branch, note strin
 	b.WriteString("- Do not push, merge, submit, abandon, approve or vote. Do not edit files unless the user asks; propose a fix first.\n")
 	b.WriteString("- Report findings grouped by file: what is wrong, why it matters, and a suggested fix. If there is nothing to report, say so.\n")
 	fmt.Fprintf(&b, "- The full description and the other reviewers' comments are on %s: use the tools you have for it (an MCP server, gh, glab), if any.\n", map[Forge]string{Gerrit: "Gerrit", GitHub: "GitHub", GitLab: "GitLab", Bitbucket: "Bitbucket"}[c.Forge])
-	return os.WriteFile(filepath.Join(admin, briefFile), []byte(b.String()), 0o644)
+	return writeTask(dir, reviewFile, []byte(b.String()))
 }
