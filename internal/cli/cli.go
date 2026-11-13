@@ -37,6 +37,7 @@ Usage:
   airlock wt [ls] | rm <name>  list worktrees / remove one (--force with changes)
   airlock rm --purge           also delete this project's own credentials volume (credentials.scope = per-project)
   airlock ls                   list sandboxes
+  airlock gc [--force]         list (or with --force remove) what deleted projects and old releases left behind
   airlock login [--reset]      log in to the configured providers
   airlock build | update       build the image / rebuild with the latest pinned versions
                                (build --if-missing skips an image that already exists)
@@ -74,7 +75,7 @@ Flags:
 // commands maps a first word to a command; anything else is a project path.
 var commands = map[string]bool{
 	"wt": true, "review": true, "shell": true, "exec": true, "stop": true, "restart": true, "mcp": true, "rm": true, "ls": true, "login": true,
-	"build": true, "update": true, "doctor": true, "audit": true, "config": true,
+	"build": true, "update": true, "doctor": true, "audit": true, "config": true, "gc": true,
 	"version": true, "help": true,
 }
 
@@ -294,6 +295,8 @@ func (e *env) run(ctx context.Context) (int, error) {
 		return e.cmdLogin(ctx)
 	case "doctor":
 		return e.cmdDoctor(ctx)
+	case "gc":
+		return e.cmdGc(ctx)
 	case "audit":
 		return e.cmdAudit(ctx)
 	case "wt":

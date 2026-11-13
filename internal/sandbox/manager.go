@@ -355,7 +355,7 @@ func (m *Manager) Up(ctx context.Context) (created bool, err error) {
 		m.logf("airlock: WARNING network mode 'open': the sandbox can reach your computer and your LAN")
 	}
 	for _, v := range plan.Spec.Volumes {
-		if err := m.B.EnsureVolume(ctx, v.Name); err != nil {
+		if err := m.B.EnsureVolume(ctx, v.Name, v.Labels); err != nil {
 			return false, err
 		}
 	}

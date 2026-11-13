@@ -178,11 +178,14 @@ func BuildPlan(in PlanInput) (*Plan, error) {
 	plan.Warnings = append(plan.Warnings, maskWarn...)
 
 	credsVol := CredsVolumeBase
+	var credsLabels map[string]string
 	if c.Credentials.Scope == "per-project" {
 		credsVol = CredsVolumeBase + "-" + p.FamilySlug()
+		// What lets `airlock gc` tell that the project is gone.
+		credsLabels = map[string]string{backend.LabelKind: backend.KindCredentials, backend.LabelProject: p.RepoRoot()}
 	}
 	volumes := []backend.VolumeMount{
-		{Name: credsVol, Target: "/creds"},
+		{Name: credsVol, Target: "/creds", Labels: credsLabels},
 		{Name: ToolsVolume, Target: "/home/agent/.local/share/mise"},
 	}
 
