@@ -135,7 +135,7 @@ func Collect(root, path, name, tasks string) (*Summary, error) {
 	if err := s.collectFiles(loc, diffBase); err != nil {
 		return nil, err
 	}
-	st, err := git(loc, "status", "--porcelain=v1", "-z", "--untracked-files=no")
+	st, err := git(loc, "status", "--porcelain=v1", "-z", "--untracked-files=no", "--ignore-submodules=all")
 	switch {
 	case errors.Is(err, hostgit.ErrTooLarge):
 		s.Notes = append(s.Notes, tooMany)
@@ -237,7 +237,7 @@ func (s *Summary) collectCommits(loc *hostgit.Location, base string) error {
 // collectFiles reads the file list twice, with the same arguments except the
 // output format, so that renames found by one are found by the other.
 func (s *Summary) collectFiles(loc *hostgit.Location, base string) error {
-	common := []string{"diff", "--no-color", "--no-ext-diff", "--no-textconv", "-M"}
+	common := []string{"diff", "--no-color", "--no-ext-diff", "--no-textconv", "--ignore-submodules=all", "-M"}
 	nums, err := git(loc, append(append([]string{}, common...), "--numstat", "-z", base)...)
 	if errors.Is(err, hostgit.ErrTooLarge) {
 		s.Notes = append(s.Notes, tooMany)

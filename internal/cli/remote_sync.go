@@ -55,7 +55,7 @@ func (e *env) remotePush(p *sandbox.Project, host, path string) (int, error) {
 	if err != nil {
 		return 1, err
 	}
-	dirty, err := gitOut(loc, "status", "--porcelain", "--untracked-files=no")
+	dirty, err := gitOut(loc, "status", "--porcelain", "--untracked-files=no", "--ignore-submodules=all")
 	if err != nil {
 		return 1, err
 	}
