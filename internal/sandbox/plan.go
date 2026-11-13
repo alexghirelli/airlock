@@ -250,6 +250,7 @@ func BuildPlan(in PlanInput) (*Plan, error) {
 	man.ClaudeCode = c.NeedsClaudeCode()
 	man.Agent.Kind = c.Agent.Kind
 	man.Agent.Args = c.Agent.Args
+	man.Agent.Resume = c.Agent.Resume
 	man.Agent.Versions = map[string]string{"pi": c.PiVersion(), "claude": c.ClaudeVersion()}
 	// What the start installs: the agent, and Claude Code when something else needs it.
 	man.Agent.Install = []string{c.Agent.Kind}
@@ -405,6 +406,7 @@ type manifest struct {
 		Versions map[string]string `json:"versions"` // what airlock-agent-install puts in place
 		Install  []string          `json:"install"`  // installed when the sandbox starts
 		Args     []string          `json:"args"`
+		Resume   bool              `json:"resume"` // continue the previous conversation of a directory
 	} `json:"agent"`
 }
 

@@ -37,6 +37,7 @@ gerrit_remote = ""               # remote that "airlock wt review" fetches from 
 kind = "pi"                      # pi | claude: the agent that opens in the sandbox (airlock --agent claude, for one run)
 version = "pinned"               # pinned (tested with this airlock) | latest | an exact version such as "2.1.322"
 args = []                        # extra arguments for it, e.g. ["--dangerously-skip-permissions"] for Claude Code
+resume = true                    # reopening a workspace (a closed worktree, a restarted sandbox) continues its last conversation; --fresh starts a new one
 # Pi is in the image; Claude Code is installed by Anthropic's own installer into the
 # tools volume the first time it is needed, so it is never part of the airlock image.
 

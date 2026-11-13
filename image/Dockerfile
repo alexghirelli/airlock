@@ -54,8 +54,9 @@ COPY --from=agents /opt/pi /opt/pi
 COPY pi-wrapper.sh /usr/local/bin/pi
 COPY claude-wrapper.sh /usr/local/bin/claude
 COPY agent-install.sh /usr/local/bin/airlock-agent-install
+COPY agent-session.sh /usr/local/bin/airlock-agent-session
 COPY npm-wrapper.sh /opt/pi/shims/npm
-RUN chmod 0755 /usr/local/bin/pi /usr/local/bin/claude /usr/local/bin/airlock-agent-install /opt/pi/shims/npm \
+RUN chmod 0755 /usr/local/bin/pi /usr/local/bin/claude /usr/local/bin/airlock-agent-install /usr/local/bin/airlock-agent-session /opt/pi/shims/npm \
  && pi --version
 
 # mise (toolchains per project) and Herdr (agent multiplexer), both system-wide.
