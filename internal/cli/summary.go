@@ -28,6 +28,7 @@ func (e *env) cmdSummary(_ context.Context) (int, error) {
 	}
 	// A worktree that shares the project's sandbox settles to the project's Root
 	// with the worktree in Cwd: the checkout the user is in is the worktree.
+	root := l.project.RepoRoot()
 	path, name := l.project.Root, ""
 	if l.project.Cwd != "" {
 		path = l.project.Cwd
@@ -50,7 +51,7 @@ func (e *env) cmdSummary(_ context.Context) (int, error) {
 	case l.project.IsWorktree():
 		tasks, _ = repo.TasksOf(filepath.Base(l.project.Root), true)
 	}
-	s, err := summary.Collect(path, name, tasks)
+	s, err := summary.Collect(root, path, name, tasks)
 	if err != nil {
 		return 1, err
 	}

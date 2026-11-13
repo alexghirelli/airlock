@@ -96,14 +96,38 @@ func mkWorktree(t *testing.T, root, name string) *Project {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(wt, ".git"), []byte("gitdir: "+admin+"\n"), 0o644); err != nil {
-		t.Fatal(err)
+	// What git writes for a linked worktree: the file, and the admin directory's
+	// back-references to it and to the common directory.
+	for name, body := range map[string]string{
+		filepath.Join(wt, ".git"):         "gitdir: " + admin + "\n",
+		filepath.Join(admin, "gitdir"):    filepath.Join(wt, ".git") + "\n",
+		filepath.Join(admin, "commondir"): "../..\n",
+	} {
+		if err := os.WriteFile(name, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 	p, err := Resolve(wt)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return p
+}
+
+// linkWorktree writes a worktree's ".git" file and the admin directory's
+// back-references, as git does.
+func linkWorktree(t *testing.T, tree, admin string) {
+	t.Helper()
+	files := map[string]string{
+		filepath.Join(tree, ".git"):       "gitdir: " + admin + "\n",
+		filepath.Join(admin, "gitdir"):    filepath.Join(tree, ".git") + "\n",
+		filepath.Join(admin, "commondir"): "../..\n",
+	}
+	for name, body := range files {
+		if err := os.WriteFile(name, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func TestResolveFromInsideAWorktreeGivesTheWorktreeItsOwnProject(t *testing.T) {
@@ -185,7 +209,7 @@ func testPlan(t *testing.T, userToml string, project *Project, env map[string]st
 	plan, err := BuildPlan(PlanInput{
 		Project: project, Config: res, Image: "airlock:test",
 		Host: Host{UID: 1234, GID: 567, Getenv: func(k string) string { return env[k] },
-			GitConfig: func(_, k string) string {
+			GitConfig: func(_ *Project, k string) string {
 				return map[string]string{"user.name": "Ada", "user.email": "ada@example.org", "extensions.worktreeConfig": testWorktreeConfig}[k]
 			}},
 	})
@@ -745,7 +769,7 @@ func TestSettleSendsSharedWorktreesToTheProjectsSandbox(t *testing.T) {
 	admin := filepath.Join(root, ".git", "worktrees", "rev")
 	os.MkdirAll(iso, 0o755)
 	os.MkdirAll(admin, 0o755)
-	os.WriteFile(filepath.Join(iso, ".git"), []byte("gitdir: "+admin+"\n"), 0o644)
+	linkWorktree(t, iso, admin)
 	isolated, err := Resolve(iso)
 	if err != nil {
 		t.Fatal(err)
@@ -754,7 +778,7 @@ func TestSettleSendsSharedWorktreesToTheProjectsSandbox(t *testing.T) {
 	admin2 := filepath.Join(root, ".git", "worktrees", "elsewhere")
 	os.MkdirAll(outside, 0o755)
 	os.MkdirAll(admin2, 0o755)
-	os.WriteFile(filepath.Join(outside, ".git"), []byte("gitdir: "+admin2+"\n"), 0o644)
+	linkWorktree(t, outside, admin2)
 	elsewhere, err := Resolve(outside)
 	if err != nil {
 		t.Fatal(err)
@@ -814,7 +838,7 @@ func TestAddingAnIsolatedWorktreeDoesNotChangeTheProjectsPolicy(t *testing.T) {
 	admin := filepath.Join(root, ".git", "worktrees", "rev")
 	os.MkdirAll(iso, 0o755)
 	os.MkdirAll(admin, 0o755)
-	os.WriteFile(filepath.Join(iso, ".git"), []byte("gitdir: "+admin+"\n"), 0o644)
+	linkWorktree(t, iso, admin)
 	p, err := Resolve(iso)
 	if err != nil {
 		t.Fatal(err)
@@ -834,6 +858,20 @@ func TestPrepareHostCreatesTheIsolatedFolder(t *testing.T) {
 	}
 	if st, err := os.Stat(filepath.Join(proj.Root, ".worktrees", ".isolated")); err != nil || !st.IsDir() {
 		t.Errorf("the isolated folder is missing (the tmpfs that hides it needs a target): %v", err)
+	}
+}
+
+// The main checkout's .git is a mount point, so the agent cannot rename it.
+func TestMainGitDirectoryIsAMountPoint(t *testing.T) {
+	root := mkRepo(t, filepath.Join(realTemp(t), "repo"))
+	proj, err := Resolve(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gd := filepath.Join(root, ".git")
+	b := findBind(testPlan(t, "", proj, nil), containerPath(gd))
+	if b == nil || b.Source != gd || b.ReadOnly {
+		t.Errorf("the main .git must be a read-write mount point of its own: %+v", b)
 	}
 }
 

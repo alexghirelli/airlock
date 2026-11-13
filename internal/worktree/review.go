@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/alexghirelli/airlock/internal/hostgit"
 )
 
 // Forge is the kind of server a change under review lives on. All three publish
@@ -329,7 +331,7 @@ func (r *Repo) probe(remote string, c Change) (map[Forge][]int, error) {
 			patterns = append(patterns, fmt.Sprintf("refs/pull-requests/%d/from", c.Number))
 		}
 	}
-	out, err := r.git(r.Root, append([]string{"ls-remote", remote}, patterns...)...)
+	out, err := r.gitWithRetry(r.Root, networkOpts, append([]string{"ls-remote", remote}, patterns...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -447,7 +449,7 @@ func (r *Repo) Review(c Change, name, branch string, isolated bool) (*ReviewResu
 	// Into a ref of its own, never FETCH_HEAD: that file is shared by every fetch
 	// in the repository, so two reviews started together would read each other's.
 	// The ref also keeps the commit from being garbage collected.
-	if _, err := r.git(r.Root, "fetch", "--quiet", "--no-tags", remote, "+"+c.serverRef()+":"+c.fetched()); err != nil {
+	if _, err := r.gitWithRetry(r.Root, networkOpts, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", remote, "+"+c.serverRef()+":"+c.fetched()); err != nil {
 		return nil, fmt.Errorf("fetch %s %s: %w", remote, c.serverRef(), err)
 	}
 	sha, err := r.git(r.Root, "rev-parse", "--verify", c.fetched()+"^{commit}")
@@ -511,7 +513,7 @@ func (r *Repo) moveTo(path, branch string, c Change, sha string) string {
 	if dirty != "" {
 		return fmt.Sprintf("%s has uncommitted changes, so it was left on its old version; commit or discard them and run this again", path)
 	}
-	if _, err := r.git(path, "reset", "--hard", "--quiet", sha); err != nil {
+	if _, err := r.gitWithRetry(path, hostgit.Options{Writes: true}, "reset", "--hard", "--quiet", sha); err != nil {
 		return err.Error()
 	}
 	return ""

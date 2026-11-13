@@ -70,7 +70,7 @@ func (e *env) wtHandoff(ctx context.Context, repo *worktree.Repo, l *loaded, nam
 		name: name, path: path, note: note, kind: wl.res.Config.Agent.Kind, force: e.a.force,
 		agents: func(ctx context.Context) ([]inbox.Raw, error) { return herdrAgents(ctx, b, m.Name()) },
 		brief: func() (string, error) {
-			s, err := summary.Collect(path, name, tasks)
+			s, err := summary.Collect(repo.Root, path, name, tasks)
 			if err != nil {
 				return "", err
 			}

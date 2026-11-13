@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+
+	"github.com/alexghirelli/airlock/internal/hostgit"
 )
 
 // ContainerPrefix starts the name of every sandbox container.
@@ -155,31 +157,11 @@ func findRepoRoot(dir string) (root, main string) {
 	}
 }
 
-// mainRepoOfWorktree reads a ".git" file ("gitdir: <repo>/.git/worktrees/<n>")
-// and returns <repo>, or "" if it is not a linked worktree.
+// mainRepoOfWorktree returns the main checkout of the linked worktree whose
+// ".git" file is gitFile, or "". The file is written by the agent, so the answer
+// is only what hostgit can verify: see hostgit.MainOfWorktree.
 func mainRepoOfWorktree(gitFile string) string {
-	data, err := os.ReadFile(gitFile)
-	if err != nil {
-		return ""
-	}
-	line := strings.TrimSpace(string(data))
-	gitdir, ok := strings.CutPrefix(line, "gitdir:")
-	if !ok {
-		return ""
-	}
-	gitdir = filepath.ToSlash(strings.TrimSpace(gitdir))
-	if !filepath.IsAbs(filepath.FromSlash(gitdir)) {
-		gitdir = filepath.ToSlash(filepath.Join(filepath.Dir(gitFile), filepath.FromSlash(gitdir)))
-	}
-	i := strings.LastIndex(gitdir, "/.git/worktrees/")
-	if i < 0 {
-		return ""
-	}
-	main := filepath.FromSlash(gitdir[:i])
-	if real, err := filepath.EvalSymlinks(main); err == nil {
-		main = real
-	}
-	return main
+	return hostgit.MainOfWorktree(filepath.Dir(gitFile))
 }
 
 func slug(root string) string { return slugOf(filepath.Base(root), root) }
