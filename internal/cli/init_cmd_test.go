@@ -282,3 +282,49 @@ func TestInitHostileRepository(t *testing.T) {
 		}
 	}
 }
+
+// A MediaWiki checkout gets the per-project file printed, and nothing is written
+// for it: .airlock.toml does not carry the sandbox or runner lines.
+func TestInitPrintsMediaWikiRunnerFileOnly(t *testing.T) {
+	dir := writeProject(t, map[string]string{"composer.json": `{"name":"mediawiki/core"}`})
+	code, out, errb := runInit(t, dir)
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errb)
+	}
+	for _, want := range []string{
+		"match = [",
+		`worktree_link = ["LocalSettings.php", "vendor", "extensions/*", "skins/*"]`,
+		"# [[runner]]",
+		"# container = ",
+		"(not written)",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output lacks %q:\n%s", want, out)
+		}
+	}
+	written, err := os.ReadFile(filepath.Join(dir, ".airlock.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(written), "worktree_link") || strings.Contains(string(written), "runner") {
+		t.Errorf(".airlock.toml carries the per-project file:\n%s", written)
+	}
+}
+
+func TestInitSnippetQuotesAndCleans(t *testing.T) {
+	if got := tomlString(`a"b\c`); got != `"a\"b\\c"` {
+		t.Errorf("tomlString = %s", got)
+	}
+	// A path with control characters is not rewritten: the user types it.
+	s := mediaWikiSnippet("/srv/a\x1b[31mb\"c")
+	if strings.ContainsRune(cleanBlock(s), 0x1b) || !strings.Contains(cleanBlock(s), `match = ["<edit by hand>"]`) {
+		t.Errorf("control characters: %q", s)
+	}
+	// Glob characters are escaped, and a backslash too, then TOML-quoted.
+	if got := matchLine(`/srv/a*b?c[d]\e"f`); got != `match = ["/srv/a\\*b\\?c\\[d]\\\\e\"f"]  # glob characters in the path are escaped with a backslash` {
+		t.Errorf("matchLine = %s", got)
+	}
+	if got := matchLine("/srv/plain"); got != `match = ["/srv/plain"]` {
+		t.Errorf("plain path: %s", got)
+	}
+}

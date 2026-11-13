@@ -263,6 +263,64 @@ What worktrees still share is the git directory: objects, branches and tags. An 
 an isolated worktree can rewrite refs of other branches. It cannot read or change their
 files. See [Security model](#security-model).
 
+### Running tests in a container you already have
+
+Some projects are tested in a container you already run: a DDEV web container, a plain
+container, or a docker compose service. A `[[runner]]` in your user config names one, and
+`airlock wt run` runs a command in it, against a worktree. The mw-core example, with a
+running container (recommended):
+
+```toml
+[[runner]]
+name      = "mw"
+container = "mw-core-mediawiki-1"   # docker ps lists it
+mount     = "/var/www/html/w"       # where the project root is mounted in that container
+# user    = "501:20"                # optional, passed as --user
+```
+
+The compose form works too: `compose = "~/Sites/wmf/mw-core/docker-compose.yml"` (or a list
+of files, each passed as its own `-f`, in order) with `service = "mediawiki"` instead of
+`container`. With an explicit `-f`, docker compose does not load `docker-compose.override.yml`
+by itself: list it. Only docker compose v2 is supported.
+
+```sh
+airlock wt run mw rate-limit -- composer phpunit:entrypoint -- tests/phpunit/unit/includes/Foo
+airlock wt run mw . -- composer phpunit:entrypoint   # the main checkout
+```
+
+airlock maps the worktree to its place under the mount (here
+`/var/www/html/w/.worktrees/rate-limit`) and runs the command there with docker. The
+command goes as separate arguments after the container or service name, never through a
+shell; the exit code is the command's. `--print` shows the docker command instead,
+shell-quoted for pasting, and runs nothing. A project's `.airlock.toml` cannot define a
+runner, and a worktree is only one that airlock made: a link or a folder without a `.git`
+file in `.worktrees/` is refused.
+
+Some things to know when you use it:
+
+- Ctrl-C reaches the container's command only when there is a terminal. Without one,
+  `docker exec` does not forward it, and the process keeps running; airlock stops docker,
+  which does not stop that process.
+- git inside the container does not work in a worktree, unless the host path of the
+  project equals `mount`: the worktree's `.git` file holds the host's absolute path. Run
+  git on the host.
+- The compose form is less safe. A compose file inside the project can be written by the
+  agent, and so can the `.env` next to it, which changes the compose project name: `exec`
+  then reaches another project's container. airlock warns when a compose file is inside the
+  project, and it still runs. Prefer `container`.
+
+This runs on your computer, outside the sandbox, and the agent cannot start it: it has no
+Docker socket. The worktree's code runs in that container, with the project's main checkout
+mounted there read-write, so what the agent wrote can change every file of the project. Its
+output is the container's and reaches your terminal unfiltered, escape sequences included,
+so code in the worktree can print anything: write to your clipboard, change the window
+title. Look at what the agent changed first (`airlock summary <worktree>`, `airlock audit`).
+To let the agent run the tests itself, inside the sandbox, install what they need there
+(`extras.mise`, `extras.apt`): it then runs them with its own changes, under the sandbox.
+
+`airlock init` on a MediaWiki checkout prints a per-project file for your config directory
+with the worktree links and a commented runner to paste. It writes nothing.
+
 ### Inbox: what your agents are waiting for
 
 With several worktrees running agents at once, an agent that stopped on a question

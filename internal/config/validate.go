@@ -262,6 +262,10 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	for _, err := range runnerErrors(c.Runners) {
+		add(err)
+	}
+
 	for role, lvl := range c.Team.Thinking {
 		add(oneOf("team.thinking."+role, lvl, Thinkings))
 	}

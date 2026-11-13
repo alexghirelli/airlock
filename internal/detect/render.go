@@ -64,6 +64,9 @@ func Suggestions(f Findings, secrets []string, more bool) []string {
 		}
 		out = append(out, "services: "+strings.Join(images, ", ")+". airlock has no service containers yet, and the sandbox cannot reach the host or your LAN by default. Run the service outside and open its address with network.allow_cidrs in your user config (a hole in the LAN block)")
 	}
+	if f.MediaWiki {
+		out = append(out, "mediawiki/core: a per-project file for your config directory is printed below (not written), with a [[runner]] to run the tests in a container you already have")
+	}
 	if len(secrets) > 0 {
 		var lines []string
 		for _, s := range secrets {

@@ -34,6 +34,9 @@ type Findings struct {
 	Agents []string `json:"agents,omitempty"`
 	// Notes are facts worth showing that do not change the file.
 	Notes []string `json:"notes,omitempty"`
+	// MediaWiki is set when composer.json names mediawiki/core: init then
+	// suggests a per-project file with a [[runner]] for the checkout.
+	MediaWiki bool `json:"mediawiki,omitempty"`
 }
 
 // Pin is a toolchain that a version file already pins.
@@ -484,6 +487,7 @@ func (s *scan) composer() {
 	if c.Name == "mediawiki/core" {
 		add("php-mysql", "composer.json: MediaWiki database driver")
 		add("php-sqlite3", "composer.json: MediaWiki database driver (SQLite needs no server)")
+		s.f.MediaWiki = true
 		s.f.Notes = append(s.f.Notes,
 			"MediaWiki needs a database. airlock runs no database containers yet: use SQLite, or a database on the host or LAN opened with network.allow_cidrs")
 	}

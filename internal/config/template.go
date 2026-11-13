@@ -92,6 +92,17 @@ mise = []                        # e.g. ["node@22"], preinstalled globally
 # env = { TRACKER_USER = "alice" }
 # env_from_host = { TRACKER_TOKEN = "TRACKER_TOKEN" }
 
+# A container you already run outside airlock, where you run a project's tests
+# with "airlock wt run <runner> <worktree> -- <command>" (see the README). Only
+# this file and the trusted per-project files may define one.
+# [[runner]]
+# name      = "mw"
+# container = "mw-core-mediawiki-1"   # a running container (recommended)
+# # or: compose = "~/Sites/wmf/mw-core/docker-compose.yml"   (a path, or a list of paths)
+# #     service = "mediawiki"
+# mount     = "/var/www/html/w"   # where the project root is mounted in that container
+# user      = "501:20"            # optional, passed as --user
+
 # Preparation steps run inside the sandbox at start, before the agent: build a
 # virtualenv, install node_modules, anything airlock knows nothing about. A step
 # is skipped while its command is unchanged and the "creates" path exists. Only
