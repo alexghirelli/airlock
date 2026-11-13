@@ -59,6 +59,8 @@ Flags:
   --from <ref>       wt add: where a new branch starts (default HEAD)
   --no-attach        wt add/review/open: prepare the sandbox but do not attach
   --attach           wt add/review: attach even if a Herdr is already open in another terminal
+  --fresh            start the agent with a new conversation instead of continuing the last one
+                     (agent.resume = false turns the continuing off for good)
   --shared           wt add/review: use the project's sandbox, a Herdr workspace each
   --isolated         wt add/review: give the worktree a sandbox of its own
                      (the default comes from sandbox.worktree_isolation)
@@ -98,6 +100,7 @@ type args struct {
 	accept    bool
 	ifMissing bool
 	noAttach  bool
+	fresh     bool
 	attach    bool
 	shared    bool
 	isolated  bool
@@ -150,6 +153,8 @@ func parseArgs(argv []string) (*args, error) {
 				a.accept = true
 			case "--if-missing":
 				a.ifMissing = true
+			case "--fresh":
+				a.fresh = true
 			case "--no-attach":
 				a.noAttach = true
 			case "--attach":
@@ -347,7 +352,7 @@ func (e *env) manager(l *loaded) (*sandbox.Manager, error) {
 	}
 	return &sandbox.Manager{
 		B: b, Config: l.res, Project: l.project, Host: sandbox.DefaultHost(),
-		Log: e.stderr, Verbose: e.a.verbose, Recreate: e.a.recreate, Confirm: e.confirm,
+		Log: e.stderr, Verbose: e.a.verbose, Recreate: e.a.recreate, Fresh: e.a.fresh, Confirm: e.confirm,
 	}, nil
 }
 

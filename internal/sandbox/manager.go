@@ -41,6 +41,8 @@ type Manager struct {
 	// NoFocus keeps Herdr's focus where it is when a worktree's workspace is
 	// created (the caller is not going to attach).
 	NoFocus bool
+	// Fresh starts the agent of a workspace without continuing its last conversation.
+	Fresh bool
 	// Confirm asks the user a yes/no question. Nil means "no".
 	Confirm func(prompt string) bool
 	// ReadyTimeout bounds the wait for init (first starts install packages).
@@ -565,6 +567,9 @@ func (m *Manager) PrepareHerdr(ctx context.Context, team bool) error {
 	cmd := []string{"airlock-herdr-up", "--agent", m.Config.Config.Agent.Kind}
 	if team {
 		cmd = append(cmd, "--team")
+	}
+	if m.Fresh {
+		cmd = append(cmd, "--fresh")
 	}
 	if m.Project.Cwd != "" { // a worktree that shares this sandbox gets a workspace of its own
 		cmd = append(cmd, "--workspace", m.Project.WorkDir())

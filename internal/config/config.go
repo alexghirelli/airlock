@@ -79,6 +79,9 @@ type Agent struct {
 	Kind    string   `toml:"kind"`    // pi | claude
 	Version string   `toml:"version"` // pinned | latest | an exact version
 	Args    []string `toml:"args"`    // extra arguments for the agent, e.g. Claude Code's permission mode
+	// Resume continues the conversation the agent had in a directory when its
+	// workspace is opened again (a closed worktree, a restarted sandbox).
+	Resume bool `toml:"resume"`
 }
 
 type Pi struct {
@@ -180,7 +183,7 @@ func Defaults() Config {
 		Credentials: Credentials{Scope: "shared"},
 		Agents:      Agents{Concise: true},
 		Git:         Git{Mode: "local", Hosts: []string{"github.com"}},
-		Agent:       Agent{Kind: "pi", Version: "pinned", Args: []string{}},
+		Agent:       Agent{Kind: "pi", Version: "pinned", Args: []string{}, Resume: true},
 		Pi:          Pi{Version: "latest-pinned", Packages: []string{}, Settings: map[string]any{}},
 		Extras:      Extras{ClaudeCode: "auto", Apt: []string{}, Mise: []string{}},
 		Env:         map[string]Env{},

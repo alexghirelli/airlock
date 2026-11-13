@@ -8,10 +8,12 @@
 #   airlock-herdr-up --close DIR      close the workspace of a worktree that is going away
 # Every form takes --agent KIND (pi, claude): the agent to run there, instead of the
 # sandbox's default. It is installed first when it is not there yet.
+# The agent continues the conversation it had in that directory (--continue) when
+# there is one, unless agent.resume is off in the manifest or --fresh is given.
 set -euo pipefail
 
 project="${AIRLOCK_PROJECT_DIR:-$PWD}"
-dir="$project"; team=0; focus=--focus; close=0
+dir="$project"; team=0; focus=--focus; close=0; fresh=0
 kind="$(jq -r '.agent.kind // "pi"' /etc/airlock/manifest.json 2>/dev/null || echo pi)"
 while (( $# )); do
   case "$1" in
@@ -20,6 +22,7 @@ while (( $# )); do
     --no-focus) focus=--no-focus ;;
     --workspace) dir="$2"; shift ;;
     --close) dir="$2"; close=1; shift ;;
+    --fresh) fresh=1 ;;
   esac
   shift
 done
@@ -29,6 +32,16 @@ if [[ "$dir" != "$project" ]]; then
   team=0
   agent="$kind-${label//[^A-Za-z0-9_-]/-}" # one agent name per workspace
 fi
+
+# What to add to the agent's command line: --continue when it has a conversation in
+# this directory. Teams always start fresh.
+resume_args=()
+resume="$(jq -r 'if .agent.resume == false then "no" else "yes" end' /etc/airlock/manifest.json 2>/dev/null || echo yes)"
+if (( ! team && ! fresh )) && [[ "$resume" == yes ]] && airlock-agent-session "$kind" "$dir"; then
+  resume_args=(-- --continue)
+fi
+# Test hook: show the arguments the agent would get, without touching Herdr.
+if [[ -n "${AIRLOCK_RESUME_ARGS_ONLY:-}" ]]; then printf '%s\n' "${resume_args[@]}"; exit 0; fi
 
 ready() { herdr status server 2>&1 | grep -q 'status: running'; }
 
@@ -92,7 +105,7 @@ if (( team )); then
 else
   # Not in the image (Claude Code) or a version other than the image's (Pi): fetch it now.
   airlock-agent-install "$kind" >&2
-  if ! herdr agent start "$agent" --kind "$kind" --pane "$pane" --timeout 120000 >/dev/null; then
+  if ! herdr agent start "$agent" --kind "$kind" --pane "$pane" --timeout 120000 "${resume_args[@]}" >/dev/null; then
     # Pi always comes up ready. Another agent may be waiting for you (a login, a
     # first-run question); it is running in the pane either way.
     [[ "$kind" != pi ]] || exit 1
