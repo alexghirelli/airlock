@@ -24,7 +24,13 @@ const (
 	LabelVersion  = "io.airlock.version"
 	LabelPolicy   = "io.airlock.policy"
 	LabelLifetime = "io.airlock.lifetime"
+	// LabelKind says what a volume holds. Only volumes with a kind and a project
+	// are ever collected by `airlock gc`.
+	LabelKind = "io.airlock.kind"
 )
+
+// KindCredentials marks a project's own credentials volume.
+const KindCredentials = "credentials"
 
 // Bind is a host path mounted into the sandbox.
 type Bind struct {
@@ -37,6 +43,17 @@ type Bind struct {
 type VolumeMount struct {
 	Name   string
 	Target string
+	// Labels are put on the volume when it is created. They are not part of the
+	// sandbox's policy: a volume made earlier keeps the labels it has.
+	Labels map[string]string `json:"-"`
+}
+
+// VolumeInfo describes a volume airlock manages.
+type VolumeInfo struct {
+	Name   string
+	Labels map[string]string
+	// InUse is true while a sandbox, running or stopped, mounts it.
+	InUse bool
 }
 
 // Spec describes a sandbox to create.
@@ -124,7 +141,10 @@ type Backend interface {
 	Info(ctx context.Context) (*EngineInfo, error)
 
 	EnsureNetwork(ctx context.Context, name string) error
-	EnsureVolume(ctx context.Context, name string) error
+	// EnsureVolume creates a volume (with labels, besides the managed one) unless it exists.
+	EnsureVolume(ctx context.Context, name string, labels map[string]string) error
+	// ListVolumes lists the volumes airlock created.
+	ListVolumes(ctx context.Context) ([]VolumeInfo, error)
 	RemoveVolume(ctx context.Context, name string) error
 
 	ImageExists(ctx context.Context, ref string) (bool, error)

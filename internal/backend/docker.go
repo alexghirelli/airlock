@@ -104,12 +104,36 @@ func (d *Docker) EnsureNetwork(ctx context.Context, name string) error {
 	return nil
 }
 
-func (d *Docker) EnsureVolume(ctx context.Context, name string) error {
-	_, err := d.cli.VolumeCreate(ctx, client.VolumeCreateOptions{
-		Name:   name,
-		Labels: map[string]string{LabelManaged: "true"},
-	})
+func (d *Docker) EnsureVolume(ctx context.Context, name string, labels map[string]string) error {
+	l := map[string]string{LabelManaged: "true"}
+	for k, v := range labels {
+		l[k] = v
+	}
+	_, err := d.cli.VolumeCreate(ctx, client.VolumeCreateOptions{Name: name, Labels: l})
 	return err
+}
+
+func (d *Docker) ListVolumes(ctx context.Context) ([]VolumeInfo, error) {
+	managed := client.Filters{}.Add("label", LabelManaged+"=true")
+	all, err := d.cli.VolumeList(ctx, client.VolumeListOptions{Filters: managed})
+	if err != nil {
+		return nil, err
+	}
+	// "dangling" volumes are the ones no container mounts.
+	unused, err := d.cli.VolumeList(ctx, client.VolumeListOptions{Filters: managed.Add("dangling", "true")})
+	if err != nil {
+		return nil, err
+	}
+	free := map[string]bool{}
+	for _, v := range unused.Items {
+		free[v.Name] = true
+	}
+	var out []VolumeInfo
+	for _, v := range all.Items {
+		out = append(out, VolumeInfo{Name: v.Name, Labels: v.Labels, InUse: !free[v.Name]})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
 }
 
 func (d *Docker) RemoveVolume(ctx context.Context, name string) error {
