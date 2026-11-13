@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 
 	"github.com/alexghirelli/airlock/internal/sandbox"
 	"github.com/alexghirelli/airlock/internal/summary"
@@ -27,20 +28,30 @@ func (e *env) cmdSummary(_ context.Context) (int, error) {
 	}
 	// A worktree that shares the project's sandbox settles to the project's Root
 	// with the worktree in Cwd: the checkout the user is in is the worktree.
+	root := l.project.RepoRoot()
 	path, name := l.project.Root, ""
 	if l.project.Cwd != "" {
 		path = l.project.Cwd
 	}
-	if len(e.a.rest) == 1 {
+	repo := &worktree.Repo{Root: l.project.RepoRoot(), Dir: l.res.Config.Sandbox.WorktreesDir}
+	repo.TasksOf = tasksOf(repo.Root, repo.Dir)
+	// The task files are the worktree's; the main checkout has none.
+	var tasks string
+	switch {
+	case len(e.a.rest) == 1:
 		name = e.a.rest[0]
-		repo := &worktree.Repo{Root: l.project.RepoRoot(), Dir: l.res.Config.Sandbox.WorktreesDir}
-		p, _, ok := repo.Find(name)
+		p, isolated, ok := repo.Find(name)
 		if !ok {
 			return 1, fmt.Errorf("no worktree %q (see airlock wt ls)", name)
 		}
 		path = p
+		tasks, _ = repo.TasksOf(name, isolated)
+	case l.project.Cwd != "":
+		tasks, _ = repo.TasksOf(filepath.Base(l.project.Cwd), false)
+	case l.project.IsWorktree():
+		tasks, _ = repo.TasksOf(filepath.Base(l.project.Root), true)
 	}
-	s, err := summary.Collect(path, name)
+	s, err := summary.Collect(root, path, name, tasks)
 	if err != nil {
 		return 1, err
 	}

@@ -4,12 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/alexghirelli/airlock/internal/hostgit"
 )
 
 // Forge is the kind of server a change under review lives on. All three publish
@@ -331,7 +331,7 @@ func (r *Repo) probe(remote string, c Change) (map[Forge][]int, error) {
 			patterns = append(patterns, fmt.Sprintf("refs/pull-requests/%d/from", c.Number))
 		}
 	}
-	out, err := r.git(r.Root, append([]string{"ls-remote", remote}, patterns...)...)
+	out, err := r.gitWithRetry(r.Root, networkOpts, append([]string{"ls-remote", remote}, patterns...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -449,7 +449,7 @@ func (r *Repo) Review(c Change, name, branch string, isolated bool) (*ReviewResu
 	// Into a ref of its own, never FETCH_HEAD: that file is shared by every fetch
 	// in the repository, so two reviews started together would read each other's.
 	// The ref also keeps the commit from being garbage collected.
-	if _, err := r.git(r.Root, "fetch", "--quiet", "--no-tags", remote, "+"+c.serverRef()+":"+c.fetched()); err != nil {
+	if _, err := r.gitWithRetry(r.Root, networkOpts, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", remote, "+"+c.serverRef()+":"+c.fetched()); err != nil {
 		return nil, fmt.Errorf("fetch %s %s: %w", remote, c.serverRef(), err)
 	}
 	sha, err := r.git(r.Root, "rev-parse", "--verify", c.fetched()+"^{commit}")
@@ -487,7 +487,11 @@ func (r *Repo) Review(c Change, name, branch string, isolated bool) (*ReviewResu
 			return res, err
 		}
 	}
-	return res, r.writeBrief(path, c, remote, sha, branch, res.Note)
+	dir, err := r.taskDir(name, isolated)
+	if err != nil {
+		return res, err
+	}
+	return res, r.writeBrief(dir, c, remote, sha, branch, res.Note)
 }
 
 // moveTo moves the branch to sha when that loses nothing, and says why not
@@ -505,11 +509,11 @@ func (r *Repo) moveTo(path, branch string, c Change, sha string) string {
 		return fmt.Sprintf("%s has local commits, so it was left alone. To put them on %s: git -C %s rebase --onto %s %s",
 			branch, c.version(), path, shortOr(sha, ""), shortOr(anchor, ""))
 	}
-	dirty, _ := r.git(path, "status", "--porcelain")
+	dirty, _ := r.git(path, "status", "--porcelain", "--ignore-submodules=all")
 	if dirty != "" {
 		return fmt.Sprintf("%s has uncommitted changes, so it was left on its old version; commit or discard them and run this again", path)
 	}
-	if _, err := r.git(path, "reset", "--hard", "--quiet", sha); err != nil {
+	if _, err := r.gitWithRetry(path, hostgit.Options{Writes: true}, "reset", "--hard", "--quiet", sha); err != nil {
 		return err.Error()
 	}
 	return ""
@@ -549,14 +553,9 @@ func (r *Repo) guessBase(remote, sha string) string {
 // writeBrief describes the review the agent in this worktree is there to do. It
 // names the commit itself, not just the branch: if the branch could not be moved
 // (it existed, or has commits of its own), the review still looks at the right
-// change.
-func (r *Repo) writeBrief(path string, c Change, remote, sha, branch, note string) error {
-	// The brief is written through the checked admin directory: the worktree's .git
-	// file can be rewritten by an agent (see CheckedAdminDir).
-	admin, err := CheckedAdminDir(r.Root, path)
-	if err != nil {
-		return err
-	}
+// change. It goes to the worktree's task folder (see tasks.go), not into the
+// worktree, where the agent could change what the next start reads.
+func (r *Repo) writeBrief(dir string, c Change, remote, sha, branch, note string) error {
 	subject, _ := r.git(r.Root, "log", "-1", "--format=%s", sha)
 	author, _ := r.git(r.Root, "log", "-1", "--format=%an", sha)
 	short := shortOr(sha, "")
@@ -587,5 +586,5 @@ func (r *Repo) writeBrief(path string, c Change, remote, sha, branch, note strin
 	b.WriteString("- Do not push, merge, submit, abandon, approve or vote. Do not edit files unless the user asks; propose a fix first.\n")
 	b.WriteString("- Report findings grouped by file: what is wrong, why it matters, and a suggested fix. If there is nothing to report, say so.\n")
 	fmt.Fprintf(&b, "- The full description and the other reviewers' comments are on %s: use the tools you have for it (an MCP server, gh, glab), if any.\n", map[Forge]string{Gerrit: "Gerrit", GitHub: "GitHub", GitLab: "GitLab", Bitbucket: "Bitbucket"}[c.Forge])
-	return os.WriteFile(filepath.Join(admin, briefFile), []byte(b.String()), 0o644)
+	return writeTask(dir, reviewFile, []byte(b.String()))
 }

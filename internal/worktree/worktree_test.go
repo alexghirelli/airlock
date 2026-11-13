@@ -137,6 +137,7 @@ type fixture struct {
 	repo   *Repo
 	server string
 	main   string
+	tasks  string // the task folders of the worktrees
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -155,7 +156,8 @@ func newFixture(t *testing.T) *fixture {
 	commit(t, main, "a.txt", "one\n")
 	git(t, main, "remote", "add", "origin", server)
 	git(t, main, "push", "-q", "origin", "main")
-	return &fixture{repo: &Repo{Root: main, Dir: ".worktrees"}, server: server, main: main}
+	tasks := filepath.Join(tmp, "tasks")
+	return &fixture{repo: &Repo{Root: main, Dir: ".worktrees", TasksOf: tasksFolder(tasks)}, server: server, main: main, tasks: tasks}
 }
 
 // patchset publishes a commit on top of main as refs/changes/NN/N/P.
@@ -446,7 +448,7 @@ func TestReviewWritesTheTaskOutsideTheCheckout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	brief, err := os.ReadFile(filepath.Join(AdminDir(res.Path), briefFile))
+	brief, err := os.ReadFile(filepath.Join(taskFolder(t, f.tasks, res.Path), reviewFile))
 	if err != nil {
 		t.Fatalf("no review brief: %v", err)
 	}
@@ -460,25 +462,25 @@ func TestReviewWritesTheTaskOutsideTheCheckout(t *testing.T) {
 	}
 
 	// A newer patchset rewrites the brief; the user's focus is untouched.
-	if err := SetFocus(f.main, res.Path, "SQL injection only"); err != nil {
+	if err := SetFocus(taskFolder(t, f.tasks, res.Path), "SQL injection only"); err != nil {
 		t.Fatal(err)
 	}
 	f.patchset(t, 88, 2, "v2\n")
 	if _, err := f.repo.Review(Change{Number: 88}, "", "", false); err != nil {
 		t.Fatal(err)
 	}
-	brief, _ = os.ReadFile(filepath.Join(AdminDir(res.Path), briefFile))
+	brief, _ = os.ReadFile(filepath.Join(taskFolder(t, f.tasks, res.Path), reviewFile))
 	if !strings.Contains(string(brief), "patchset 2") {
 		t.Errorf("brief not updated:\n%s", brief)
 	}
-	if got := Focus(res.Path); got != "SQL injection only" {
+	if got := Focus(taskFolder(t, f.tasks, res.Path)); got != "SQL injection only" {
 		t.Errorf("focus = %q", got)
 	}
-	if err := SetFocus(f.main, res.Path, "  "); err != nil || Focus(res.Path) != "" {
-		t.Errorf("focus not cleared: %q, %v", Focus(res.Path), err)
+	if err := SetFocus(taskFolder(t, f.tasks, res.Path), "  "); err != nil || Focus(taskFolder(t, f.tasks, res.Path)) != "" {
+		t.Errorf("focus not cleared: %q, %v", Focus(taskFolder(t, f.tasks, res.Path)), err)
 	}
-	if err := SetFocus(f.main, f.main, "x"); err == nil {
-		t.Error("focus set on the main checkout")
+	if err := SetFocus("", "x"); err == nil {
+		t.Error("focus set with no task folder (the main checkout has none)")
 	}
 }
 
@@ -532,7 +534,7 @@ func TestParallelReviewsDoNotMixUpPatchsets(t *testing.T) {
 		if got := git(t, f.main, "rev-parse", "refs/heads/review/"+strconv.Itoa(r.change)); got != want[r.change] {
 			t.Errorf("review/%d is at %s, want its own patchset %s", r.change, got, want[r.change])
 		}
-		brief, _ := os.ReadFile(filepath.Join(AdminDir(r.res.Path), briefFile))
+		brief, _ := os.ReadFile(filepath.Join(taskFolder(t, f.tasks, r.res.Path), reviewFile))
 		if !strings.Contains(string(brief), "change "+strconv.Itoa(r.change)+",") {
 			t.Errorf("review %d has the wrong task:\n%s", r.change, brief)
 		}
@@ -557,7 +559,7 @@ func TestReviewNamesTheCommitAndWarnsWhenTheBranchIsNotAtIt(t *testing.T) {
 	if got := git(t, res.Path, "rev-parse", "HEAD"); got != other {
 		t.Errorf("an existing branch must not be moved: HEAD = %s", got)
 	}
-	brief, _ := os.ReadFile(filepath.Join(AdminDir(res.Path), briefFile))
+	brief, _ := os.ReadFile(filepath.Join(taskFolder(t, f.tasks, res.Path), reviewFile))
 	for _, want := range []string{sha[:12], "git rev-parse HEAD", "WARNING from airlock", "left alone"} {
 		if !strings.Contains(string(brief), want) {
 			t.Errorf("brief lacks %q:\n%s", want, brief)
@@ -598,19 +600,19 @@ func TestReviewResolvesWhichKindOfChangeANumberIs(t *testing.T) {
 		if got := git(t, res.Path, "rev-parse", "HEAD"); got != c.sha {
 			t.Errorf("%s: HEAD = %s, want %s", c.branch, got, c.sha)
 		}
-		brief, _ := os.ReadFile(filepath.Join(AdminDir(res.Path), briefFile))
+		brief, _ := os.ReadFile(filepath.Join(taskFolder(t, f.tasks, res.Path), reviewFile))
 		if !strings.Contains(string(brief), c.sha[:12]) || !strings.Contains(string(brief), "git rev-parse HEAD") {
 			t.Errorf("%s: brief does not name the commit:\n%s", c.branch, brief)
 		}
 	}
 	// Pull and merge requests are told apart from Gerrit changes in what the agent reads.
-	prBrief, _ := os.ReadFile(filepath.Join(AdminDir(filepath.Join(f.main, ".worktrees", "review-pr-31")), briefFile))
+	prBrief, _ := os.ReadFile(filepath.Join(taskFolder(t, f.tasks, filepath.Join(f.main, ".worktrees", "review-pr-31")), reviewFile))
 	for _, want := range []string{"pull request #31", "merge-base", "GitHub"} {
 		if !strings.Contains(string(prBrief), want) {
 			t.Errorf("pull request brief lacks %q:\n%s", want, prBrief)
 		}
 	}
-	mrBrief, _ := os.ReadFile(filepath.Join(AdminDir(filepath.Join(f.main, ".worktrees", "review-mr-32")), briefFile))
+	mrBrief, _ := os.ReadFile(filepath.Join(taskFolder(t, f.tasks, filepath.Join(f.main, ".worktrees", "review-mr-32")), reviewFile))
 	if !strings.Contains(string(mrBrief), "merge request !32") || !strings.Contains(string(mrBrief), "GitLab") {
 		t.Errorf("merge request brief:\n%s", mrBrief)
 	}
@@ -691,7 +693,7 @@ func TestReviewUsesTheRemoteAURLPointsAt(t *testing.T) {
 	head := commit(t, clone, "change.txt", "pr\n")
 	git(t, clone, "push", "-q", "origin", "HEAD:refs/pull/5/head")
 
-	repo := &Repo{Root: main, Dir: ".worktrees"}
+	repo := &Repo{Root: main, Dir: ".worktrees", TasksOf: tasksFolder(filepath.Join(tmp, "tasks"))}
 	// A bare number: origin does not have it, upstream does.
 	res, err := repo.Review(Change{Number: 5}, "", "", false)
 	if err != nil || git(t, res.Path, "rev-parse", "HEAD") != head {

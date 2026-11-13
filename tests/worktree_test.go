@@ -117,10 +117,10 @@ func TestSharedWorktreesAreHerdrWorkspacesOfOneSandbox(t *testing.T) {
 	}
 	// Pi started there is given the worktree's task; elsewhere it is not.
 	args := p.mustAt(feat, `AIRLOCK_PI_ARGS_ONLY=1 pi`)
-	if !strings.Contains(args, "--append-system-prompt") || !strings.Contains(args, "airlock-focus.md") || strings.Contains(args, "airlock-review.md") {
+	if !strings.Contains(args, "--append-system-prompt") || !strings.Contains(args, "focus.md") || strings.Contains(args, "review.md") {
 		t.Errorf("Pi in the worktree gets:\n%s", args)
 	}
-	if args := p.mustAt(p.Dir, `AIRLOCK_PI_ARGS_ONLY=1 pi`); strings.Contains(args, "airlock-focus.md") {
+	if args := p.mustAt(p.Dir, `AIRLOCK_PI_ARGS_ONLY=1 pi`); strings.Contains(args, "focus.md") {
 		t.Errorf("the project's own Pi gets a worktree's focus:\n%s", args)
 	}
 
@@ -210,10 +210,10 @@ git config core.hooksPath /tmp/h >/dev/null 2>&1 && echo HOOKSPATH-SET || echo h
 		}
 	}
 	// Pi in the review gets the review task (and no focus, none was given).
-	if args := p.mustAt(review, `AIRLOCK_PI_ARGS_ONLY=1 pi`); !strings.Contains(args, "airlock-review.md") || strings.Contains(args, "airlock-focus.md") {
+	if args := p.mustAt(review, `AIRLOCK_PI_ARGS_ONLY=1 pi`); !strings.Contains(args, "review.md") || strings.Contains(args, "focus.md") {
 		t.Errorf("Pi in the review gets:\n%s", args)
 	}
-	if brief := p.mustAt(review, `cat "$(git rev-parse --absolute-git-dir)/airlock-review.md"`); !strings.Contains(brief, "change 777, patchset 1") || !strings.Contains(brief, "a colleague's change") {
+	if brief := p.mustAt(review, `cat "/run/airlock/tasks/$(basename "$(git rev-parse --show-toplevel)")/review.md"`); !strings.Contains(brief, "change 777, patchset 1") || !strings.Contains(brief, "a colleague's change") {
 		t.Errorf("review task:\n%s", brief)
 	}
 
@@ -321,7 +321,7 @@ func TestReviewAPullRequestFromTheCLI(t *testing.T) {
 	if h := p.git("-C", review, "rev-parse", "HEAD"); h != head {
 		t.Errorf("HEAD = %s, want %s", h, head)
 	}
-	brief := p.mustAt(review, `cat "$(git rev-parse --absolute-git-dir)/airlock-review.md"`)
+	brief := p.mustAt(review, `cat "/run/airlock/tasks/$(basename "$(git rev-parse --show-toplevel)")/review.md"`)
 	for _, want := range []string{"pull request #21", "Fix the widget", head[:12], "GitHub"} {
 		if !strings.Contains(brief, want) {
 			t.Errorf("task lacks %q:\n%s", want, brief)

@@ -4,20 +4,22 @@
 // it; the agent handoff writes it as a briefing. Collect only reads: it runs
 // git, and never writes to the repository or to airlock's state.
 //
-// The checkout is written by the agent, so everything read from it is data:
-// git is run with its hooks, fsmonitor and textconv filters off, and the text
-// the renderers print is made safe for a terminal or for another agent.
+// The checkout is written by the agent, so everything read from it is data.
+// git runs through package hostgit, which pins the repository it reads and
+// turns off what would run code from the checkout; the output of a listing
+// that is too large to hold is reported as too many changes, not as a failure.
+// The text the renderers print is made safe for a terminal or for another agent.
 package summary
 
 import (
-	"bytes"
+	"context"
+	"errors"
 	"fmt"
-	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/alexghirelli/airlock/internal/hostgit"
 	"github.com/alexghirelli/airlock/internal/worktree"
 )
 
@@ -26,6 +28,13 @@ const (
 	maxCommits   = 50
 	maxUntracked = 50
 )
+
+// outputLimit bounds what one git call of a summary may write. A listing past it
+// is reported as too many changes.
+var outputLimit int64 = hostgit.DefaultMaxOutput
+
+// tooMany is the note for a listing git wrote past the output limit.
+const tooMany = "too many changes to list: git's output is over the limit, so the list is left out"
 
 // Summary is what one checkout changed. JSON names are stable: the agent
 // handoff and scripts read them.
@@ -77,35 +86,44 @@ type Audit struct {
 	Changes  []string `json:"changes"`
 }
 
-// Collect reads the checkout at path. name labels it; empty means its folder name.
-func Collect(path, name string) (*Summary, error) {
+// Collect reads the checkout at path, a working tree of the repository whose
+// main checkout is root (root itself for the main checkout). name labels it;
+// empty means its folder name. tasks is the worktree's task folder (see
+// worktree.TaskDir), where its focus and review come from; empty when it has
+// none, as the main checkout. git only runs on root's own repository: see
+// hostgit.Open.
+func Collect(root, path, name, tasks string) (*Summary, error) {
 	if name == "" {
 		name = filepath.Base(path)
 	}
+	loc, err := hostgit.Open(root, path)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
 	s := &Summary{Name: name, Path: path, Commits: []Commit{}, Files: []File{}, Untracked: []string{}, Notes: []string{}}
-	head, err := gitOut(path, "rev-parse", "--short", "HEAD")
+	head, err := gitOut(loc, "rev-parse", "--short", "HEAD")
 	if err != nil {
 		return nil, fmt.Errorf("%s: nothing to summarise (no commit yet?): %w", path, err)
 	}
 	s.Head = head
 	// A detached HEAD fails here and leaves Branch empty.
-	s.Branch, _ = gitOut(path, "symbolic-ref", "--quiet", "--short", "HEAD")
+	s.Branch, _ = gitOut(loc, "symbolic-ref", "--quiet", "--short", "HEAD")
 	remote := ""
 	if s.Branch != "" {
-		remote, _ = gitOut(path, "config", "--get", "branch."+s.Branch+".remote")
+		remote, _ = gitOut(loc, "config", "--get", "branch."+s.Branch+".remote")
 	}
-	upstream, _ := gitOut(path, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
-	originHead, _ := gitOut(path, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
+	upstream, _ := gitOut(loc, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
+	originHead, _ := gitOut(loc, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
 	upstream = usableUpstream(s.Branch, remote, upstream, originHead)
 
 	diffBase := "HEAD"
-	ref, mb, found := findBase(path, s.Branch, upstream, originHead)
+	ref, mb, found := findBase(loc, s.Branch, upstream, originHead)
 	switch {
 	case mb != "":
 		s.BaseRef = ref
-		s.Base, _ = gitOut(path, "rev-parse", "--short", mb)
+		s.Base, _ = gitOut(loc, "rev-parse", "--short", mb)
 		diffBase = mb
-		if err := s.collectCommits(path, mb); err != nil {
+		if err := s.collectCommits(loc, mb); err != nil {
 			return nil, err
 		}
 	case len(found) > 0:
@@ -114,27 +132,35 @@ func Collect(path, name string) (*Summary, error) {
 		s.Notes = append(s.Notes, "no base branch found (no upstream, origin/HEAD, main or master): only uncommitted changes are summarised")
 	}
 
-	if err := s.collectFiles(path, diffBase); err != nil {
+	if err := s.collectFiles(loc, diffBase); err != nil {
 		return nil, err
 	}
-	st, err := git(path, "status", "--porcelain=v1", "-z", "--untracked-files=no")
-	if err != nil {
+	st, err := git(loc, "status", "--porcelain=v1", "-z", "--untracked-files=no", "--ignore-submodules=all")
+	switch {
+	case errors.Is(err, hostgit.ErrTooLarge):
+		s.Notes = append(s.Notes, tooMany)
+	case err != nil:
 		return nil, err
+	default:
+		s.Uncommitted = countStatus(st)
 	}
-	s.Uncommitted = countStatus(st)
-	ut, err := git(path, "ls-files", "--others", "--exclude-standard", "-z")
-	if err != nil {
+	ut, err := git(loc, "ls-files", "--others", "--exclude-standard", "-z")
+	switch {
+	case errors.Is(err, hostgit.ErrTooLarge):
+		s.Notes = append(s.Notes, tooMany)
+	case err != nil:
 		return nil, err
+	default:
+		list := splitNUL(ut)
+		s.UntrackedCount = len(list)
+		if len(list) > maxUntracked {
+			list = list[:maxUntracked]
+		}
+		s.Untracked = append(s.Untracked, list...)
 	}
-	list := splitNUL(ut)
-	s.UntrackedCount = len(list)
-	if len(list) > maxUntracked {
-		list = list[:maxUntracked]
-	}
-	s.Untracked = append(s.Untracked, list...)
 
-	s.Focus = worktree.Focus(path)
-	s.Review = worktree.Brief(path) != ""
+	s.Focus = worktree.Focus(tasks)
+	s.Review = worktree.Brief(tasks) != ""
 	return s, nil
 }
 
@@ -161,13 +187,13 @@ func isDefaultBranch(branch, originHead string) bool {
 // with HEAD, and that merge-base. Both are empty when there is none. found lists
 // the candidates that exist, so a caller can tell "no candidate" from "no
 // merge-base with any of them".
-func findBase(path, branch, upstream, originHead string) (ref, base string, found []string) {
+func findBase(loc *hostgit.Location, branch, upstream, originHead string) (ref, base string, found []string) {
 	for _, r := range baseRefs(branch, upstream, originHead) {
-		if _, err := gitOut(path, "rev-parse", "--verify", "--quiet", r+"^{commit}"); err != nil {
+		if _, err := gitOut(loc, "rev-parse", "--verify", "--quiet", r+"^{commit}"); err != nil {
 			continue
 		}
 		found = append(found, r)
-		mb, err := gitOut(path, "merge-base", "HEAD", r)
+		mb, err := gitOut(loc, "merge-base", "HEAD", r)
 		if err != nil || mb == "" {
 			continue
 		}
@@ -193,14 +219,14 @@ func baseRefs(branch, upstream, originHead string) []string {
 	return refs
 }
 
-func (s *Summary) collectCommits(path, base string) error {
+func (s *Summary) collectCommits(loc *hostgit.Location, base string) error {
 	rng := base + "..HEAD"
-	out, err := git(path, "log", "--no-color", "-n", strconv.Itoa(maxCommits), "--format=%h%x1f%s", rng, "--")
+	out, err := git(loc, "log", "--no-color", "-n", strconv.Itoa(maxCommits), "--format=%h%x1f%s", rng, "--")
 	if err != nil {
 		return err
 	}
 	s.Commits = append(s.Commits, parseLog(out)...)
-	n, err := gitOut(path, "rev-list", "--count", rng)
+	n, err := gitOut(loc, "rev-list", "--count", rng)
 	if err != nil {
 		return err
 	}
@@ -210,13 +236,21 @@ func (s *Summary) collectCommits(path, base string) error {
 
 // collectFiles reads the file list twice, with the same arguments except the
 // output format, so that renames found by one are found by the other.
-func (s *Summary) collectFiles(path, base string) error {
-	common := []string{"diff", "--no-color", "--no-ext-diff", "--no-textconv", "-M"}
-	nums, err := git(path, append(append([]string{}, common...), "--numstat", "-z", base)...)
+func (s *Summary) collectFiles(loc *hostgit.Location, base string) error {
+	common := []string{"diff", "--no-color", "--no-ext-diff", "--no-textconv", "--ignore-submodules=all", "-M"}
+	nums, err := git(loc, append(append([]string{}, common...), "--numstat", "-z", base)...)
+	if errors.Is(err, hostgit.ErrTooLarge) {
+		s.Notes = append(s.Notes, tooMany)
+		return nil
+	}
 	if err != nil {
 		return err
 	}
-	stats, err := git(path, append(append([]string{}, common...), "--name-status", "-z", base)...)
+	stats, err := git(loc, append(append([]string{}, common...), "--name-status", "-z", base)...)
+	if errors.Is(err, hostgit.ErrTooLarge) {
+		s.Notes = append(s.Notes, tooMany)
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -235,50 +269,15 @@ func (s *Summary) collectFiles(path, base string) error {
 	return nil
 }
 
-// git runs git on the repository at dir and returns its output as it is: -z
-// output must not be trimmed. The checkout is agent-writable, so the options
-// that would run code from it (hooks, fsmonitor) are off.
-func git(dir string, args ...string) (string, error) {
-	full := append([]string{"-C", dir,
-		"-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "-c", "diff.relative=false"}, args...)
-	cmd := exec.Command("git", full...)
-	cmd.Env = gitEnv()
-	var out, errb bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &errb
-	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(errb.String())
-		if msg == "" {
-			msg = err.Error()
-		}
-		return "", fmt.Errorf("git %s: %s", args[0], msg)
-	}
-	return out.String(), nil
+// git runs git in the checkout and returns its output as it is: -z output must
+// not be trimmed. The call is read-only and pinned by hostgit.
+func git(loc *hostgit.Location, args ...string) (string, error) {
+	return loc.Output(context.Background(), hostgit.Options{MaxOutput: outputLimit}, args...)
 }
 
-func gitOut(dir string, args ...string) (string, error) {
-	out, err := git(dir, args...)
+func gitOut(loc *hostgit.Location, args ...string) (string, error) {
+	out, err := git(loc, args...)
 	return strings.TrimSpace(out), err
-}
-
-// gitEnv drops the variables that point git at another repository, another
-// object store or other configuration (set when airlock runs inside a hook or
-// a rebase, or by the environment of whoever runs it), so -C alone picks the
-// checkout that is read.
-func gitEnv() []string {
-	var env []string
-	for _, kv := range os.Environ() {
-		name, _, _ := strings.Cut(kv, "=")
-		if strings.HasPrefix(name, "GIT_CONFIG_KEY_") || strings.HasPrefix(name, "GIT_CONFIG_VALUE_") {
-			continue
-		}
-		switch name {
-		case "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_COMMON_DIR", "GIT_NAMESPACE",
-			"GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_CONFIG_COUNT", "GIT_CONFIG_PARAMETERS", "GIT_QUARANTINE_PATH":
-			continue
-		}
-		env = append(env, kv)
-	}
-	return append(env, "GIT_TERMINAL_PROMPT=0", "LC_ALL=C")
 }
 
 func contains(list []string, s string) bool {

@@ -10,7 +10,9 @@ import (
 	"os/exec"
 	"slices"
 	"strings"
+	"time"
 
+	"github.com/alexghirelli/airlock/internal/hostgit"
 	"github.com/alexghirelli/airlock/internal/sandbox"
 	"github.com/alexghirelli/airlock/internal/version"
 )
@@ -45,11 +47,15 @@ func (e *env) clean() *env {
 
 func (e *env) remotePush(p *sandbox.Project, host, path string) (int, error) {
 	e = e.clean()
-	branch, err := e.pushBranch(p.Root)
+	loc, err := hostgit.Open(p.RepoRoot(), p.Root)
 	if err != nil {
 		return 1, err
 	}
-	dirty, err := gitOut(p.Root, "status", "--porcelain", "--untracked-files=no")
+	branch, err := e.pushBranch(loc)
+	if err != nil {
+		return 1, err
+	}
+	dirty, err := gitOut(loc, "status", "--porcelain", "--untracked-files=no", "--ignore-submodules=all")
 	if err != nil {
 		return 1, err
 	}
@@ -70,12 +76,10 @@ func (e *env) remotePush(p *sandbox.Project, host, path string) (int, error) {
 		return 1, fmt.Errorf("could not prepare %s on %s (see above)", dir, shellQuote(host))
 	}
 	name := remoteName(host, p.Slug)
-	if err := ensureGitRemote(p.Root, name, remoteURL(host, p.Slug)); err != nil {
+	if err := ensureGitRemote(loc, name, remoteURL(host, p.Slug)); err != nil {
 		return 1, err
 	}
-	push := gitCmd(p.Root, "push", name, pushRefspec(branch))
-	push.Stdout, push.Stderr = e.stdout, e.stderr
-	if err := push.Run(); err != nil {
+	if err := loc.Stream(context.Background(), remoteOpts, e.stdout, e.stderr, "push", name, pushRefspec(branch)); err != nil {
 		return 1, fmt.Errorf("push to %s failed (git's message is above); if the server has commits you lack, run %s first",
 			shellQuote(host), shellJoin("airlock", "remote", "pull", host))
 	}
@@ -94,17 +98,17 @@ func (e *env) remotePush(p *sandbox.Project, host, path string) (int, error) {
 
 // pushBranch is the branch to push: -b names a local branch, otherwise the
 // current one, which must exist (a detached HEAD has no branch to push).
-func (e *env) pushBranch(root string) (string, error) {
+func (e *env) pushBranch(loc *hostgit.Location) (string, error) {
 	if b := e.a.branch; b != "" {
 		if err := checkBranchName(b); err != nil {
 			return "", err
 		}
-		if _, err := gitOut(root, "rev-parse", "--verify", "-q", "refs/heads/"+b); err != nil {
+		if _, err := gitOut(loc, "rev-parse", "--verify", "-q", "refs/heads/"+b); err != nil {
 			return "", fmt.Errorf("no local branch %q", b)
 		}
 		return b, nil
 	}
-	out, err := gitOut(root, "symbolic-ref", "-q", "HEAD")
+	out, err := gitOut(loc, "symbolic-ref", "-q", "HEAD")
 	b, ok := branchFromRef(out)
 	if err != nil || !ok {
 		return "", errors.New("detached HEAD: check out a branch, or name one with -b")
@@ -171,40 +175,42 @@ func (e *env) serverBranch(host, dir string) string {
 }
 
 // ensureGitRemote makes sure the remote exists with this URL.
-func ensureGitRemote(root, name, url string) error {
-	list, err := gitOut(root, "remote")
+func ensureGitRemote(loc *hostgit.Location, name, url string) error {
+	list, err := gitOut(loc, "remote")
 	if err != nil {
 		return err
 	}
 	if !slices.Contains(strings.Split(list, "\n"), name) {
-		_, err := gitOut(root, "remote", "add", name, url)
+		_, err := gitOut(loc, "remote", "add", name, url)
 		return err
 	}
-	cur, err := gitOut(root, "remote", "get-url", name)
+	cur, err := gitOut(loc, "remote", "get-url", name)
 	if err != nil || cur == url {
 		return err
 	}
-	_, err = gitOut(root, "remote", "set-url", name, url)
+	_, err = gitOut(loc, "remote", "set-url", name, url)
 	return err
 }
 
 func (e *env) remotePull(p *sandbox.Project, host string) (int, error) {
 	e = e.clean()
-	name := remoteName(host, p.Slug)
-	if err := ensureGitRemote(p.Root, name, remoteURL(host, p.Slug)); err != nil {
-		return 1, err
-	}
-	before, err := remoteRefs(p.Root, name)
+	loc, err := hostgit.Open(p.RepoRoot(), p.Root)
 	if err != nil {
 		return 1, err
 	}
-	fetch := gitCmd(p.Root, "fetch", "-q", "--no-tags", "--no-recurse-submodules", "--prune", name)
-	fetch.Stderr = e.stderr
-	if err := fetch.Run(); err != nil {
+	name := remoteName(host, p.Slug)
+	if err := ensureGitRemote(loc, name, remoteURL(host, p.Slug)); err != nil {
+		return 1, err
+	}
+	before, err := remoteRefs(loc, name)
+	if err != nil {
+		return 1, err
+	}
+	if err := loc.Stream(context.Background(), remoteOpts, io.Discard, e.stderr, "fetch", "-q", "--no-tags", "--no-recurse-submodules", "--no-write-fetch-head", "--prune", name); err != nil {
 		return 1, fmt.Errorf("fetch from %s failed (git's message is above); if the project is not on the server yet, run %s",
 			shellQuote(host), shellJoin("airlock", "remote", "push", host))
 	}
-	after, err := remoteRefs(p.Root, name)
+	after, err := remoteRefs(loc, name)
 	if err != nil {
 		return 1, err
 	}
@@ -223,7 +229,7 @@ func (e *env) remotePull(p *sandbox.Project, host string) (int, error) {
 		} else {
 			e.errf("airlock: %s: %s..%s", m.Name, shortSHA(m.Old), shortSHA(m.New))
 		}
-		if localBranchExists(p.Root, m.Name) {
+		if localBranchExists(loc, m.Name) {
 			e.errf("airlock:   look: %s", shellJoin("git", "log", "--oneline", m.Name+".."+ref))
 		} else {
 			e.errf("airlock:   look: %s", shellJoin("git", "log", "--oneline", ref))
@@ -237,16 +243,16 @@ func (e *env) remotePull(p *sandbox.Project, host string) (int, error) {
 }
 
 // remoteRefs reads the branches fetched from a remote, by name.
-func remoteRefs(root, name string) (map[string]string, error) {
-	out, err := gitOut(root, "for-each-ref", "--format=%(objectname) %(refname)", "refs/remotes/"+name+"/")
+func remoteRefs(loc *hostgit.Location, name string) (map[string]string, error) {
+	out, err := gitOut(loc, "for-each-ref", "--format=%(objectname) %(refname)", "refs/remotes/"+name+"/")
 	if err != nil {
 		return nil, err
 	}
 	return parseRemoteRefs(out, name), nil
 }
 
-func localBranchExists(root, branch string) bool {
-	_, err := gitOut(root, "rev-parse", "--verify", "-q", "refs/heads/"+branch)
+func localBranchExists(loc *hostgit.Location, branch string) bool {
+	_, err := gitOut(loc, "rev-parse", "--verify", "-q", "refs/heads/"+branch)
 	return err == nil
 }
 
@@ -289,28 +295,13 @@ func exitCode(err error) int {
 	return -1
 }
 
-// gitCmd is git in dir. GIT_SSH_COMMAND follows AIRLOCK_SSH, so git's own ssh
-// is the same fake one the tests give airlock.
-func gitCmd(dir string, args ...string) *exec.Cmd {
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
-	if ssh := os.Getenv("AIRLOCK_SSH"); ssh != "" {
-		cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND="+shellQuote(ssh))
-	}
-	return cmd
-}
+// remoteOpts is for push and fetch: they talk to a server and may take a while.
+var remoteOpts = hostgit.Options{Timeout: 10 * time.Minute}
 
-// gitOut runs git in dir and returns its trimmed stdout.
-func gitOut(dir string, args ...string) (string, error) {
-	cmd := gitCmd(dir, args...)
-	var out, errb bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &errb
-	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(safeText(errb.String()))
-		if msg == "" {
-			msg = err.Error()
-		}
-		return "", fmt.Errorf("git %s: %s", args[0], msg)
-	}
-	return strings.TrimSpace(out.String()), nil
+// gitOut runs git on the checkout and returns its trimmed stdout. The checkout
+// is read through hostgit, which pins the repository and passes AIRLOCK_SSH on
+// to git's ssh as GIT_SSH_COMMAND.
+func gitOut(loc *hostgit.Location, args ...string) (string, error) {
+	out, err := loc.Output(context.Background(), hostgit.Options{}, args...)
+	return strings.TrimSpace(out), err
 }

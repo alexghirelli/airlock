@@ -157,7 +157,7 @@ func sample() *Summary {
 func TestText(t *testing.T) {
 	want := `review-12345  branch review/12345 at 1a2b3c4, base origin/master (9f8e7d6)
 focus: check the SQL
-review brief: airlock-review.md
+review brief: from airlock review (its task file)
 1 commit
   1a2b3c4 Fix the query builder
 2 files, +40 -3 (2 uncommitted, 1 untracked)
@@ -192,7 +192,7 @@ check the SQL
 
 ## Review
 
-A review brief from ` + "`airlock review`" + ` is in the worktree (airlock-review.md).
+A review brief from ` + "`airlock review`" + ` was written for this worktree; the agent gets it in its instructions.
 
 ## Commits
 
@@ -314,11 +314,30 @@ func isolate(t *testing.T) {
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 }
 
+// testEnv is the environment of the test's own git calls: the caller's, without
+// the variables that point git at another repository or configuration.
+func testEnv() []string {
+	var env []string
+	for _, kv := range os.Environ() {
+		name, _, _ := strings.Cut(kv, "=")
+		if strings.HasPrefix(name, "GIT_CONFIG_KEY_") || strings.HasPrefix(name, "GIT_CONFIG_VALUE_") {
+			continue
+		}
+		switch name {
+		case "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_COMMON_DIR", "GIT_NAMESPACE",
+			"GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_CONFIG_COUNT", "GIT_CONFIG_PARAMETERS", "GIT_QUARANTINE_PATH":
+			continue
+		}
+		env = append(env, kv)
+	}
+	return append(env, "GIT_TERMINAL_PROMPT=0", "LC_ALL=C")
+}
+
 // testGit runs git in dir with a fixed identity and without the caller's GIT_DIR.
 func testGit(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
-	cmd.Env = append(gitEnv(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.org",
+	cmd.Env = append(testEnv(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.org",
 		"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.org")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -383,7 +402,7 @@ func newProject(t *testing.T) project {
 func TestCollectBaseFromUpstream(t *testing.T) {
 	p := newProject(t)
 	// Without an upstream the base is origin/HEAD (main): release's commit counts too.
-	s, err := Collect(p.wt, "feat")
+	s, err := Collect(p.main, p.wt, "feat", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -391,7 +410,7 @@ func TestCollectBaseFromUpstream(t *testing.T) {
 		t.Errorf("origin/HEAD base: %q with %d commits", s.BaseRef, s.CommitCount)
 	}
 	testGit(t, p.wt, "branch", "--set-upstream-to=origin/release", "feat")
-	s, err = Collect(p.wt, "feat")
+	s, err = Collect(p.main, p.wt, "feat", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -408,7 +427,7 @@ func TestCollectBaseFallbackAndNoBase(t *testing.T) {
 	testGit(t, dir, "checkout", "-q", "-b", "feat")
 	commitFile(t, dir, "b.txt", "two\n")
 
-	s, err := Collect(dir, "")
+	s, err := Collect(dir, dir, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -419,7 +438,7 @@ func TestCollectBaseFallbackAndNoBase(t *testing.T) {
 	// On main itself, main cannot be its own base: there is nothing to compare with.
 	testGit(t, dir, "checkout", "-q", "main")
 	writeFile(t, filepath.Join(dir, "a.txt"), "changed\n")
-	s, err = Collect(dir, "")
+	s, err = Collect(dir, dir, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -437,7 +456,7 @@ func TestCollectCommitsUncommittedAndUntracked(t *testing.T) {
 	writeFile(t, filepath.Join(p.wt, "feat.txt"), "1\nchanged\n3\n")
 	writeFile(t, filepath.Join(p.wt, "new.txt"), "x\n")
 
-	s, err := Collect(p.wt, "feat")
+	s, err := Collect(p.main, p.wt, "feat", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -486,7 +505,7 @@ func TestCollectOddNamesBinaryAndRename(t *testing.T) {
 	testGit(t, p.wt, "mv", "a.txt", "moved file.txt")
 	writeFile(t, filepath.Join(p.wt, "untracked name.txt"), "u\n")
 
-	s, err := Collect(p.wt, "feat")
+	s, err := Collect(p.main, p.wt, "feat", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -524,13 +543,16 @@ func TestCollectCapsCommitsAndReadsTaskFiles(t *testing.T) {
 	for i := 0; i < 55; i++ {
 		testGit(t, p.wt, "commit", "-q", "--allow-empty", "-m", fmt.Sprintf("c%02d", i))
 	}
-	if err := worktree.SetFocus(p.main, p.wt, "check the SQL"); err != nil {
+	tasks, err := worktree.TaskDir(filepath.Join(tempDir(t), "tasks"), "feat")
+	if err != nil {
 		t.Fatal(err)
 	}
-	brief := filepath.Join(worktree.AdminDir(p.wt), "airlock-review.md")
-	writeFile(t, brief, "# Review\n")
+	if err := worktree.SetFocus(tasks, "check the SQL"); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(tasks, "review.md"), "# Review\n")
 
-	s, err := Collect(p.wt, "feat")
+	s, err := Collect(p.main, p.wt, "feat", tasks)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -547,10 +569,10 @@ func TestCollectMainCheckoutReadsNoTaskFiles(t *testing.T) {
 	// The main checkout is not a linked worktree: task files in the working
 	// directory must not be read as its focus or brief.
 	dir := tempDir(t)
-	writeFile(t, filepath.Join(dir, "airlock-focus.md"), "# Focus\n\nwrong\n")
-	writeFile(t, filepath.Join(dir, "airlock-review.md"), "wrong\n")
+	writeFile(t, filepath.Join(dir, "focus.md"), "# Focus\n\nwrong\n")
+	writeFile(t, filepath.Join(dir, "review.md"), "wrong\n")
 	t.Chdir(dir)
-	s, err := Collect(p.main, "")
+	s, err := Collect(p.main, p.main, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -563,7 +585,7 @@ func TestCollectIgnoresGitDirOfTheEnvironment(t *testing.T) {
 	p := newProject(t)
 	other := newProject(t)
 	t.Setenv("GIT_DIR", filepath.Join(other.main, ".git"))
-	s, err := Collect(p.wt, "feat")
+	s, err := Collect(p.main, p.wt, "feat", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -576,10 +598,10 @@ func TestCollectNoCommitFails(t *testing.T) {
 	isolate(t)
 	dir := filepath.Join(tempDir(t), "empty")
 	testGit(t, filepath.Dir(dir), "init", "-q", "-b", "main", dir)
-	if _, err := Collect(dir, ""); err == nil {
+	if _, err := Collect(dir, dir, "", ""); err == nil {
 		t.Error("a repository without a commit was summarised")
 	}
-	if _, err := Collect(filepath.Dir(dir), ""); err == nil {
+	if _, err := Collect(filepath.Dir(dir), filepath.Dir(dir), "", ""); err == nil {
 		t.Error("a directory that is not a repository was summarised")
 	}
 }

@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/pelletier/go-toml/v2"
 
@@ -53,6 +55,21 @@ type Service struct {
 	Image string `json:"image"`
 }
 
+// Unusual reports whether a file name holds a control character, a line break,
+// a format or bidi character, or bytes that are not UTF-8. Such a name is never
+// printed: a line break would split the line it is printed in.
+func Unusual(name string) bool {
+	if !utf8.ValidString(name) {
+		return true
+	}
+	for _, r := range name {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || r == 0x2028 || r == 0x2029 {
+			return true
+		}
+	}
+	return false
+}
+
 // Empty reports whether nothing was found.
 func (f Findings) Empty() bool {
 	return len(f.Pinned)+len(f.Mise)+len(f.Apt)+len(f.MCP)+len(f.Services)+len(f.Agents)+len(f.Notes) == 0
@@ -63,6 +80,8 @@ const (
 	maxFileSize = 1 << 20
 	// maxSubdirs bounds how many subfolders are searched for compose files.
 	maxSubdirs = 100
+	// maxWhy caps a reason in the proposed config: some quote a value from the project.
+	maxWhy = 300
 	// defaultNodeMajor and defaultPython are used when the project does not say.
 	defaultNodeMajor = config.PinnedNodeMajor
 	defaultPython    = "3.12"
@@ -113,7 +132,12 @@ var (
 	pyRangeRe     = regexp.MustCompile(`^>=\s*(\d+\.\d+)(?:\.\d+)?\s*(?:,\s*<[^,]+)?$`)
 	goDirectiveRe = regexp.MustCompile(`(?m)^go\s+(\d+(?:\.\d+)+)[ \t]*(?://[^\n]*)?\r?$`)
 	rubyRe        = regexp.MustCompile(`(?m)^\s*ruby\s+["'](\d+\.\d+(?:\.\d+)?)["']`)
-	imageRe       = regexp.MustCompile(`(?m)^\s*image:\s*["']?([^"'\s#]+)`)
+	// imageRe takes an image line whose value is a docker image reference and
+	// nothing else: an optional quote, an optional comment, then the end of the
+	// line. Anything else on the line (an escape sequence, a control character,
+	// a value over 255 bytes) makes it no image, so the repository cannot put
+	// bytes into the report through it.
+	imageRe = regexp.MustCompile(`(?m)^\s*image:[ \t]*["']?([A-Za-z0-9._/:@-]{1,255})["']?[ \t\r]*(?:#[^\n]*)?$`)
 )
 
 // Scan looks at the project root fsys and returns what it uses.
