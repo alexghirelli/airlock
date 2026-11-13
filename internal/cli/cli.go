@@ -38,6 +38,7 @@ Usage:
   airlock wt prune [--force]   forget worktrees whose folder was deleted by hand (branches stay)
   airlock rm --purge           also delete this project's own credentials volume (credentials.scope = per-project)
   airlock ls                   list sandboxes
+  airlock inbox [--watch]      the agents of the running sandboxes and what they wait for (--watch notifies you)
   airlock gc [--force]         list (or with --force remove) what deleted projects and old releases left behind
   airlock login [--reset]      log in to the configured providers
   airlock build | update       build the image / rebuild with the latest pinned versions
@@ -68,14 +69,15 @@ Flags:
                      (the default comes from sandbox.worktree_isolation)
   --remote <host>    run the command on a remote machine over ssh
   --config <file>    use this user config file
-  --json             machine-readable output (ls, doctor, audit)
+  --json             machine-readable output (ls, doctor, audit, inbox)
+  --watch            inbox: keep polling and notify when an agent needs you
   --verbose, -v      show image build output and details
   --help, -h         show this help
 `
 
 // commands maps a first word to a command; anything else is a project path.
 var commands = map[string]bool{
-	"wt": true, "review": true, "shell": true, "exec": true, "stop": true, "restart": true, "mcp": true, "rm": true, "ls": true, "login": true,
+	"wt": true, "review": true, "shell": true, "exec": true, "stop": true, "restart": true, "mcp": true, "rm": true, "ls": true, "inbox": true, "login": true,
 	"build": true, "update": true, "doctor": true, "audit": true, "config": true, "gc": true,
 	"version": true, "help": true,
 }
@@ -100,6 +102,7 @@ type args struct {
 	force     bool
 	purge     bool
 	accept    bool
+	watch     bool
 	ifMissing bool
 	noAttach  bool
 	fresh     bool
@@ -153,6 +156,8 @@ func parseArgs(argv []string) (*args, error) {
 				a.purge = true
 			case "--accept":
 				a.accept = true
+			case "--watch":
+				a.watch = true
 			case "--if-missing":
 				a.ifMissing = true
 			case "--fresh":
@@ -288,6 +293,8 @@ func (e *env) run(ctx context.Context) (int, error) {
 		return e.cmdRm(ctx)
 	case "ls":
 		return e.cmdLs(ctx)
+	case "inbox":
+		return e.cmdInbox(ctx)
 	case "build", "update":
 		return e.cmdBuild(ctx)
 	case "config":

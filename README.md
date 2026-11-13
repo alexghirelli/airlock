@@ -69,6 +69,7 @@ airlock exec [path] -- cmd   run a command in it
 airlock stop|rm [path]       stop it (tools stay) / delete it (--purge: and its own logins)
 airlock wt add|open|focus|rm | airlock review <change>   worktrees and Gerrit reviews
 airlock ls                   list sandboxes
+airlock inbox [--watch]      the agents that need you, across sandboxes (--watch: notify)
 airlock gc [--force]         list (--force: remove) what deleted projects and old releases left behind
 airlock login                log in to the providers named in your config
 airlock audit [path]         report changes to files that run on your computer
@@ -187,6 +188,59 @@ and a port used there does not clash with yours. The project's sandbox sees
 What worktrees still share is the git directory: objects, branches and tags. An agent in
 an isolated worktree can rewrite refs of other branches. It cannot read or change their
 files. See [Security model](#security-model).
+
+### Inbox: what your agents are waiting for
+
+With several worktrees running agents at once, an agent that stopped on a question
+waits until you look. `airlock inbox` lists the agents of every running sandbox, with
+their worktree and status, blocked ones first:
+
+```
+PROJECT  WORKTREE       AGENT           KIND  STATUS
+app      review-pr-7    pi-review-pr-7  pi    blocked
+app      -              pi              pi    idle
+```
+
+`airlock inbox --watch` polls every 5 seconds and prints each status change with its time.
+It notifies you when an agent is blocked or finishes (goes from working to done or idle).
+An agent that is already blocked when the watch starts, or that appears blocked, is notified
+too. The agents that need you in one poll make one notification: "pi-review-7 needs you",
+or "3 agents need you". Ctrl-C stops it. A notification always rings the terminal bell;
+it also shows a desktop notification (`notify-send` on Linux, `osascript` on macOS). To send
+it somewhere else, set your own command in the user config. airlock appends the title and
+the message to its arguments, with no shell in between:
+
+```toml
+[notify]
+command = ["sh", "-c", "curl -s -d \"$2\" ntfy.sh/my-topic", "notify"]   # ntfy.sh, to your phone
+```
+
+Only your user config can set `[notify]`: a project's `.airlock.toml` cannot, because the
+command runs on your computer. With `airlock --remote host inbox --watch` the watch and its
+notifications run on the remote machine, so they reach that machine's desktop or ntfy topic.
+
+Each sandbox is asked with `herdr agent list`, as the session user, under `timeout` so a
+hung Herdr is killed. A sandbox without a Herdr server simply has no agents. A sandbox that
+times out, answers with something that is not an agent list, or sends more than 1 MiB is
+reported on stderr in one-shot mode (`airlock: warning: <sandbox> did not answer`), and in
+watch mode its agents are kept from the last poll. A sandbox is taken into account for at
+most 50 agents.
+
+Everything an agent reports (its name, directory, status) comes from inside the sandbox.
+airlock removes control characters, terminal escape sequences and Unicode format
+characters from it, and caps its length, before it reaches your terminal or a
+notification. That keeps the text from moving the cursor, rewriting the screen or hiding
+other text. It does not make the text trustworthy: a name can still say anything. For
+notify-send, `&`, `<` and `>` are escaped, because many notification daemons render markup.
+Other notifiers receive the text as it is, with the characters above removed.
+
+`--json` prints the same rows as an array. The parsing, classification, sorting, change
+detection and sanitizing are unit tested, and the query path is tested with a fake backend.
+Not tested end to end: the desktop notifications on macOS and notify-send, and the watch
+against a real Herdr with agents changing state.
+
+Known limitation: on Windows the project's path is a host path, and the worktree column
+does not map it to the sandbox path, so worktrees show as `-`.
 
 ## Configuration
 

@@ -31,6 +31,7 @@ type Config struct {
 	Team        Team           `toml:"team"`
 	Audit       Audit          `toml:"audit"`
 	Agents      Agents         `toml:"agents"`
+	Notify      Notify         `toml:"notify"`
 
 	// AgentsMDAppend is a host path whose content is appended to the
 	// generated global agent instructions.
@@ -171,6 +172,14 @@ type Setup struct {
 	Watch []string `toml:"watch" json:"watch"`
 }
 
+// Notify is what `airlock inbox --watch` runs when an agent needs you. It runs on
+// this computer, so only the user's own config may set it, never a project's.
+type Notify struct {
+	// Command is an argv, run with the title and the message appended. Empty
+	// means the desktop's own notifier (notify-send, osascript).
+	Command []string `toml:"command"`
+}
+
 type Team struct {
 	Enabled      bool              `toml:"enabled"`
 	ProfilesDir  string            `toml:"profiles_dir"`
@@ -200,6 +209,7 @@ func Defaults() Config {
 		Network:     Network{Mode: "open-no-lan", Allow: []string{}, AllowCIDRs: []string{}},
 		Credentials: Credentials{Scope: "shared"},
 		Agents:      Agents{Concise: true},
+		Notify:      Notify{Command: []string{}},
 		Git:         Git{Mode: "local", Hosts: []string{"github.com"}},
 		Agent:       Agent{Kind: "pi", Version: "pinned", Args: []string{}, Resume: true},
 		Pi:          Pi{Version: "latest-pinned", Packages: []string{}, Settings: map[string]any{}},
