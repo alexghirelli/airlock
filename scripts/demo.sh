@@ -64,6 +64,9 @@ export AIRLOCK_CREDENTIALS_SCOPE=per-project
 # A ready sandbox, so the recording starts at the first command.
 # (with the same HOME the recording uses, or airlock sees a changed configuration)
 HOME="$work/home" "$work/bin/airlock" exec "$app" -- airlock-herdr-up --no-focus   # the project's own Herdr workspace
+# The demo project is new, so record its audit baseline now: `airlock summary` then
+# shows what changed and not a note about a missing baseline.
+HOME="$work/home" "$work/bin/airlock" audit "$app" --accept >/dev/null 2>&1
 
 # Shell setup for the recording: the prompt, title cards, and a verdict after each
 # `airlock exec` that comes from the command's real exit status.
