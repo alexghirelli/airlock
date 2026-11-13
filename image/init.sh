@@ -134,5 +134,13 @@ while read -r step; do
   fi
 done < <(m '.setup[]? | @json')
 
+# --- stop the sandbox when nobody uses it (sandbox.idle_stop). The exec below keeps
+# this shell's pid for the container's main process, which is what the watcher ends.
+idle="$(m '.idle_stop_seconds // 0')"
+if (( idle > 0 )); then
+  echo $$ >/run/airlock/main-pid
+  setsid airlock-idle-watch "$idle" </dev/null >/dev/null 2>&1 &
+fi
+
 touch /run/airlock/ready
 exec "$@"

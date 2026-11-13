@@ -17,6 +17,8 @@ pids = 2048
 worktrees_dir = ".worktrees"     # "" disables worktree support
 worktree_isolation = "none"      # which "airlock wt" worktrees get a sandbox of their own:
                                  #   none (all share the project's, a Herdr workspace each) | reviews | all
+idle_stop = ""                   # stop the sandbox after this long with no terminal attached and no agent working,
+                                 #   e.g. "2h" (at least 5m); airlock starts it again and the agents continue their conversations
 
 [network]
 mode = "open-no-lan"             # open-no-lan | allowlist | open
