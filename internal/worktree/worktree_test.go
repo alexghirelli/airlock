@@ -460,7 +460,7 @@ func TestReviewWritesTheTaskOutsideTheCheckout(t *testing.T) {
 	}
 
 	// A newer patchset rewrites the brief; the user's focus is untouched.
-	if err := SetFocus(res.Path, "SQL injection only"); err != nil {
+	if err := SetFocus(f.main, res.Path, "SQL injection only"); err != nil {
 		t.Fatal(err)
 	}
 	f.patchset(t, 88, 2, "v2\n")
@@ -474,10 +474,10 @@ func TestReviewWritesTheTaskOutsideTheCheckout(t *testing.T) {
 	if got := Focus(res.Path); got != "SQL injection only" {
 		t.Errorf("focus = %q", got)
 	}
-	if err := SetFocus(res.Path, "  "); err != nil || Focus(res.Path) != "" {
+	if err := SetFocus(f.main, res.Path, "  "); err != nil || Focus(res.Path) != "" {
 		t.Errorf("focus not cleared: %q, %v", Focus(res.Path), err)
 	}
-	if err := SetFocus(f.main, "x"); err == nil {
+	if err := SetFocus(f.main, f.main, "x"); err == nil {
 		t.Error("focus set on the main checkout")
 	}
 }

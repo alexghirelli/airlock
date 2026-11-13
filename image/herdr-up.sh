@@ -76,6 +76,14 @@ else
   fi
 fi
 
+# Never two agents in one folder: an agent of any kind already there (a worktree
+# handed over with --agent, say) is the one to come back to, not a second one in a
+# new workspace. A list that cannot be read falls through to the start below.
+if (( ! team )) && live="$(herdr agent list 2>/dev/null | jq -er --arg d "$dir" 'first(.result.agents[]? | select(.cwd == $d)) | .workspace_id')" && [[ -n "$live" ]]; then
+  [[ "$focus" == --focus ]] && { herdr workspace focus "$live" >/dev/null 2>&1 || true; }
+  exit 0
+fi
+
 # Herdr restores saved workspaces after a server restart (a stopped and started
 # sandbox), with plain shells in them. Reuse such an idle shell pane of this
 # workspace instead of piling up a duplicate workspace on every start.

@@ -16,8 +16,8 @@ import (
 
 const wtUsage = `usage: airlock wt add <name> [focus...] [-b branch] [--from ref]
        airlock review <change|pr:N|mr:N|bb:N|url> [focus...]
-       airlock wt open <name> | focus <name> [text] | ls | rm <name> [--force] | prune [--force]
-       (add, review: --shared or --isolated, --no-attach)`
+       airlock wt open <name> | focus <name> [text] | handoff <name> [note...] | ls | rm <name> [--force] | prune [--force]
+       (add, review: --shared or --isolated, --no-attach; handoff: --agent, --force, --reset)`
 
 // cmdWt manages the git worktrees of the repository around the current
 // directory. A worktree either shares the project's sandbox (it gets a Herdr
@@ -55,7 +55,7 @@ func (e *env) cmdWt(ctx context.Context) (int, error) {
 			return 1, err
 		}
 		if focus != "" {
-			if err := worktree.SetFocus(path, focus); err != nil {
+			if err := worktree.SetFocus(repo.Root, path, focus); err != nil {
 				return 1, err
 			}
 		}
@@ -73,7 +73,7 @@ func (e *env) cmdWt(ctx context.Context) (int, error) {
 			return 1, err
 		}
 		if focus := strings.TrimSpace(strings.Join(args[1:], " ")); focus != "" {
-			if err := worktree.SetFocus(res.Path, focus); err != nil {
+			if err := worktree.SetFocus(repo.Root, res.Path, focus); err != nil {
 				return 1, err
 			}
 		}
@@ -105,11 +105,14 @@ func (e *env) cmdWt(ctx context.Context) (int, error) {
 			}
 			return 0, nil
 		}
-		if err := worktree.SetFocus(path, strings.Join(args[1:], " ")); err != nil {
+		if err := worktree.SetFocus(repo.Root, path, strings.Join(args[1:], " ")); err != nil {
 			return 1, err
 		}
 		e.errf("airlock: focus of %s updated; Pi reads it when it starts, so restart Pi there to apply it", args[0])
 		return 0, nil
+
+	case "handoff":
+		return e.wtHandoff(ctx, repo, l, args[0], strings.TrimSpace(strings.Join(args[1:], " ")))
 
 	case "ls", "list":
 		return e.wtList(ctx, repo, l)
@@ -300,7 +303,9 @@ func (e *env) wtRemove(ctx context.Context, repo *worktree.Repo, l *loaded, name
 				}
 			}
 		} else {
-			e.closeWorkspace(ctx, b, l, path)
+			if err := e.closeWorkspace(ctx, b, l, path); err != nil {
+				e.errf("airlock: warning: %v", err)
+			}
 		}
 	}
 	branch, err := repo.Remove(name, e.a.force)
@@ -315,22 +320,38 @@ func (e *env) wtRemove(ctx context.Context, repo *worktree.Repo, l *loaded, name
 }
 
 // closeWorkspace closes a shared worktree's Herdr workspace (and the agent in
-// it) when the project's sandbox is running. Best effort.
-func (e *env) closeWorkspace(ctx context.Context, b backend.Backend, l *loaded, path string) {
+// it) when the project's sandbox is running. Nothing to close is not an error.
+// Callers that must know the agent is gone (handoff) check the result; removing
+// a worktree only warns.
+func (e *env) closeWorkspace(ctx context.Context, b backend.Backend, l *loaded, path string) error {
 	if l.res.Config.Sandbox.UI != "herdr" {
-		return
+		return nil
 	}
 	p, err := sandbox.Resolve(path)
 	if err != nil {
-		return
+		return err
 	}
 	p = p.Settle(l.res.Config.Sandbox.WorktreesDir)
-	if info, err := b.Inspect(ctx, p.ContainerName()); err != nil || !info.Running {
-		return
+	info, err := b.Inspect(ctx, p.ContainerName())
+	if err != nil {
+		if errors.Is(err, backend.ErrNotFound) {
+			return nil // no sandbox, so no workspace to close (wt rm of a worktree never started)
+		}
+		return fmt.Errorf("could not look at the sandbox of %s: %w", path, err)
+	}
+	if !info.Running {
+		return nil
 	}
 	m, err := e.manager(&loaded{project: p, res: l.res})
 	if err != nil {
-		return
+		return err
 	}
-	_, _ = m.Exec(ctx, []string{"airlock-herdr-up", "--close", p.WorkDir()}, nil, e.stderr, e.stderr)
+	code, err := m.Exec(ctx, []string{"airlock-herdr-up", "--close", p.WorkDir()}, nil, e.stderr, e.stderr)
+	if err != nil {
+		return fmt.Errorf("could not close the Herdr workspace of %s: %w", path, err)
+	}
+	if code != 0 {
+		return fmt.Errorf("could not close the Herdr workspace of %s (exit %d)", path, code)
+	}
+	return nil
 }

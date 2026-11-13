@@ -551,9 +551,11 @@ func (r *Repo) guessBase(remote, sha string) string {
 // (it existed, or has commits of its own), the review still looks at the right
 // change.
 func (r *Repo) writeBrief(path string, c Change, remote, sha, branch, note string) error {
-	admin := AdminDir(path)
-	if admin == "" {
-		return nil
+	// The brief is written through the checked admin directory: the worktree's .git
+	// file can be rewritten by an agent (see CheckedAdminDir).
+	admin, err := CheckedAdminDir(r.Root, path)
+	if err != nil {
+		return err
 	}
 	subject, _ := r.git(r.Root, "log", "-1", "--format=%s", sha)
 	author, _ := r.git(r.Root, "log", "-1", "--format=%an", sha)

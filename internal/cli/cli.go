@@ -33,6 +33,7 @@ Usage:
                                request on a local branch review/<N>, in a worktree. <what>:
                                its URL, or 12345 | 12345/3 | pr:12 | mr:12 | bb:12; same as wt review
   airlock wt open <name>       come back to a worktree
+  airlock wt handoff <name> [note...]   hand the worktree to a new agent with a briefing (--agent, --force, --reset)
   airlock wt focus <name> [text]  show / set / clear (text "") what its agent concentrates on
   airlock wt [ls] | rm <name>  list worktrees / remove one (--force with changes)
   airlock wt prune [--force]   forget worktrees whose folder was deleted by hand (branches stay)
