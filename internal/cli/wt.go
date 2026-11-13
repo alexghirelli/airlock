@@ -19,6 +19,7 @@ const wtUsage = `usage: airlock wt add <name> [focus...] [-b branch] [--from ref
        airlock review <change|pr:N|mr:N|bb:N|url> [focus...]
        airlock wt open <name> | focus <name> [text] | handoff <name> [note...] | ls | rm <name> [--force] | prune [--force]
        airlock wt run <runner> <worktree|.> [--print] -- <command> [args...]
+       airlock wt link [name]   link sandbox.worktree_link paths into a worktree (all of them without a name)
        (add, review: --shared or --isolated, --no-attach; handoff: --agent, --force, --reset)`
 
 // cmdWt manages the git worktrees of the repository around the current
@@ -49,7 +50,7 @@ func (e *env) cmdWt(ctx context.Context) (int, error) {
 	if sub != "ls" && sub != "list" && repo.Dir == "" {
 		return 2, errors.New("worktrees are disabled (sandbox.worktrees_dir is empty)")
 	}
-	if len(args) == 0 && sub != "ls" && sub != "list" && sub != "prune" {
+	if len(args) == 0 && sub != "ls" && sub != "list" && sub != "prune" && sub != "link" {
 		return 2, errors.New(wtUsage)
 	}
 
@@ -61,6 +62,7 @@ func (e *env) cmdWt(ctx context.Context) (int, error) {
 		if err != nil {
 			return 1, err
 		}
+		e.linkNew(repo, cfg, path, isolated)
 		if focus != "" {
 			if err := setFocus(repo, name, isolated, focus); err != nil {
 				return 1, err
@@ -78,6 +80,9 @@ func (e *env) cmdWt(ctx context.Context) (int, error) {
 		res, err := repo.Review(change, "", e.a.branch, e.isolate(cfg, true))
 		if err != nil {
 			return 1, err
+		}
+		if res.Created {
+			e.linkNew(repo, cfg, res.Path, res.Isolated)
 		}
 		if focus := strings.TrimSpace(strings.Join(args[1:], " ")); focus != "" {
 			if err := setFocus(repo, filepath.Base(res.Path), res.Isolated, focus); err != nil {
@@ -124,6 +129,9 @@ func (e *env) cmdWt(ctx context.Context) (int, error) {
 
 	case "handoff":
 		return e.wtHandoff(ctx, repo, l, args[0], strings.TrimSpace(strings.Join(args[1:], " ")))
+
+	case "link":
+		return e.wtLink(repo, cfg.Sandbox.WorktreeLink, args)
 
 	case "ls", "list":
 		return e.wtList(ctx, repo, l)

@@ -119,6 +119,7 @@ airlock wt focus rate-limit "now: the tests"   # change what its agent concentra
 airlock wt handoff rate-limit "start at the retry path"   # a new agent takes over, with a briefing
 airlock wt rm review-12345                 # remove the worktree, keep the branch
 airlock wt prune                           # list worktrees whose folder you deleted by hand (--force forgets them)
+airlock wt link                            # link the paths of sandbox.worktree_link into worktrees (see Settings for one project)
 ```
 
 - `add` creates the worktree under `.worktrees/` (git-excluded) on a new branch from
@@ -347,8 +348,8 @@ the message to its arguments, with no shell in between:
 command = ["sh", "-c", "curl -s -d \"$2\" ntfy.sh/my-topic", "notify"]   # ntfy.sh, to your phone
 ```
 
-Only your user config can set `[notify]`: a project's `.airlock.toml` cannot, because the
-command runs on your computer. With `airlock --remote host inbox --watch` the watch and its
+Only your own configuration can set `[notify]` (your user config, or a settings file for
+one project): a project's `.airlock.toml` cannot, because the command runs on your computer. With `airlock --remote host inbox --watch` the watch and its
 notifications run on the remote machine, so they reach that machine's desktop or ntfy topic.
 
 Each sandbox is asked with `herdr agent list`, as the session user, under `timeout` so a
@@ -432,8 +433,8 @@ server.
 
 `airlock config init` writes a fully commented template to
 `$XDG_CONFIG_HOME/airlock/config.toml` (`%APPDATA%\airlock\config.toml` on
-Windows). Precedence: defaults < user config < `<project>/.airlock.toml` < CLI
-flags < `AIRLOCK_*` environment variables.
+Windows). Precedence: defaults < user config < settings for one project (below)
+< `<project>/.airlock.toml` < CLI flags < `AIRLOCK_*` environment variables.
 
 The project file comes with the repository, so it is **untrusted**. It may only
 set the UI, the default model, whether the team is on, extra `apt`/`mise`
@@ -490,11 +491,130 @@ watch = ["/mnt/tools/gerrit"]                  # rerun when files there change
 knows nothing about (a virtualenv, `npm ci`, a copy into a writable folder). A step
 is skipped while its command is unchanged and the `creates` path exists; a failing
 step is reported by `airlock` and retried at the next start, without stopping the
-sandbox. Only your user config may define steps: a project's `.airlock.toml` cannot.
+sandbox. Only your own configuration may define steps (your user config, or a settings file
+for one project): a project's `.airlock.toml` cannot.
 Put what they build under `~/.local/share/mise` to keep it across recreations.
 With `watch`, a step also reruns when the files under those paths change (size or
 modification time; `.git`, `__pycache__`, `node_modules` and `*.log` are ignored),
 so a copy of a tool from a mount stays current.
+
+### Settings for one project
+
+Some settings belong to one project, not to all of them: the local settings file a
+web app needs, a `vendor` folder, a mount that only one codebase uses. They cannot go in
+the project's `.airlock.toml`, for the reason below. They go in a **settings file for the
+project**, kept in your configuration folder, next to your user config:
+`$XDG_CONFIG_HOME/airlock/projects/*.toml` (`%APPDATA%\airlock\projects\` on Windows).
+
+The layers, lowest to highest: built-in defaults, your user config, the matching settings
+files, the project's `.airlock.toml`, CLI flags, `AIRLOCK_*` variables. `airlock config show`
+lists on stderr the layers that applied, and `airlock doctor` lists the settings files.
+
+A settings file has the user config's keys and one more, `match`, which names the project
+folders it applies to:
+
+```toml
+# ~/.config/airlock/projects/mw-core.toml
+match = ["~/Sites/wmf/mw-core", "~/work/*"]   # required: the project roots (see below)
+
+[sandbox]
+worktree_link = ["LocalSettings.php", "vendor", "extensions/*", "skins/*", ".env"]
+
+[[mount]]                                      # any key of the user config works here
+name = "notes"
+host = "~/notes"
+mode = "ro"
+```
+
+- **`match`** is a string or a list of strings (an element that is not a string is an error
+  naming the file). `~` is your home folder. `*`, `?` and `[...]` match within one folder
+  name, so `~/work/*` is the projects directly in `~/work`, not deeper; `**` means the same
+  as `*`. A project is matched by its root, the main checkout: a worktree of it gets the same
+  settings. The path is compared with the real path on disk (symlinks resolved), so write the
+  real path when your folder sits behind a link.
+- **A wildcard applies to every project that lands there.** `match = ["~/*"]` gives the
+  file's mounts, environment, setup steps and notify command to every project under your home
+  folder, including one you cloned a minute ago without reading it. Keep wildcards narrow.
+- **Several files.** All the files that match apply, in file-name order, and a later one wins.
+  The merge is the user config's: a scalar set in a file replaces the earlier value, a list
+  (`worktree_link`, `[[mount]]`, `[[mcp]]`, `[[setup]]`) replaces the earlier list rather than
+  adding to it, and `[env]` merges key by key.
+- **Files that cannot be checked stop airlock.** A file is read only up to 256 KiB. When a
+  file does not parse, or has an unknown key or a bad value, airlock reads its `match` alone:
+  if that is missing, unreadable or names this project, airlock stops and names the file,
+  because the file may apply here. If its `match` is readable and names other projects, the
+  file is skipped with a warning. An unreadable file, one over the size cap, and a symlink
+  that is refused or does not resolve stop airlock the same way: their `match` cannot be
+  read. A file that parses and matches no project is ignored.
+- **Symlinks.** A symlink is followed only to a regular file you own, and only when that file
+  is outside the project. Ownership is a sanity check, not the protection: the protection is
+  the location. A symlink that points into the project stops airlock, since the project's own
+  files are not a place for trusted settings.
+- **Where it is.** The folder is `<dir of the user config>/projects`, when the config file is
+  called `config.toml` (so `--config` and `AIRLOCK_CONFIG` move it with the file). Any other
+  name has no folder unless you set `AIRLOCK_PROJECTS_DIR` to one, which also works with
+  `config.toml`. `airlock config path --project` prints the file for the project around the
+  current directory. `airlock config init --project` writes a commented skeleton (mode 0600),
+  and `airlock config edit --project` creates it if it is missing and opens it in `$VISUAL` or
+  `$EDITOR`, as `config edit` does. The name is `<folder>.toml`; when that name already belongs
+  to another project, `<folder>-<hash>.toml`. A folder name with `*`, `?`, `[` or a backslash
+  is escaped in `match` (on Windows, which has no such escape, it is refused).
+- **The configuration folder is off limits to the sandbox.** Airlock refuses a mount of the
+  configuration folder, of the folder of the config file in use, of the projects folder, of a
+  folder that holds any of them (`~/.config` holds `~/.config/airlock`, for instance), and of a
+  file inside them. It refuses to start a sandbox whose project folder holds or lies inside
+  them. Paths are resolved through symlinks first, and compared case-insensitively on macOS and
+  Windows.
+
+**Why not in the repository.** The project's `.airlock.toml` is in the repository, and the
+agent in the sandbox can write it. So airlock reads only a few harmless keys from it (see
+[Configuration](#configuration)). A settings file is different: you own it, and airlock
+never mounts the configuration folders into a sandbox (see the last bullet above), so the
+sandbox cannot write it. That is why it may set what `.airlock.toml` may not, such as mounts,
+environment variables, setup steps and `worktree_link`. The trust is yours, though.
+A settings file you did not write is as much a configuration you accepted as your user config
+would be, so read one before you copy it.
+
+#### Links into new worktrees: `sandbox.worktree_link`
+
+A worktree shares the repository, not the folder's untracked files: `LocalSettings.php`, a
+`vendor` folder, a `.env`. `worktree_link` lists paths of the project root (relative, `/`
+separated, patterns allowed) that each new worktree should get. When `airlock wt add`, a new
+`airlock review` or `airlock wt link [name]` runs, airlock creates for every matching path a
+**relative symlink** in the worktree that points at the main checkout's entry, such as
+`.worktrees/feat/vendor -> ../../vendor`. `airlock wt link` with no name does all the
+worktrees, and running it again creates nothing new.
+
+- It never replaces anything, and never removes anything. A path that already exists in the
+  worktree is left alone, and so is a path that git tracks, in the project or in the
+  worktree's branch.
+- It skips, with a line each, what it cannot link safely: a pattern that matches nothing, a
+  match that is a link out of the project or a dangling link, and the whole of an isolated
+  worktree (its sandbox does not mount the main checkout, so the links would dangle). The count
+  line says how many paths git tracks, were already linked, or are already in the worktree as
+  something else; those are not listed one by one.
+- A folder of the new link that is missing is made inside the worktree. A folder that is a link
+  is not followed, and the link is skipped. The worktree folder is written by the agent, so the
+  links are made through a directory handle that cannot leave the worktree, and airlock stops if
+  the folder it opened is not the one it looked at.
+- Patterns may not be absolute, contain `..`, name `.git`, `.worktrees`, or the first folder of
+  `sandbox.worktrees_dir` (checked against the same configuration), or be empty. Such a pattern
+  is a configuration error. The folder is never linked at link time either.
+- The links are untracked, so they show in `git status`. A `git add -A` in the worktree would
+  stage them, so exclude them (in `.git/info/exclude`, shared by the worktrees) if they get in
+  your way.
+
+For MediaWiki core, in `~/.config/airlock/projects/mw-core.toml`:
+
+```toml
+match = ["~/Sites/wmf/mw-core"]
+
+[sandbox]
+worktree_link = ["LocalSettings.php", "vendor", "extensions/*", "skins/*", ".env"]
+```
+
+Tracked extensions and skins are skipped, so only the ones you have locally are linked.
+`worktree_link` in a project's `.airlock.toml` is ignored, and airlock says so.
 
 ### Starting a project: airlock init
 

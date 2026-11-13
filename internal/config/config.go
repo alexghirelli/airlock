@@ -1,6 +1,7 @@
 // Package config loads, merges and validates airlock configuration.
 //
-// Precedence (lowest to highest): built-in defaults, user config, project
+// Precedence (lowest to highest): built-in defaults, user config, settings for one
+// project (trusted, in the projects folder next to the user config), project
 // config (untrusted, allowlisted), CLI flags, AIRLOCK_* environment variables.
 package config
 
@@ -57,6 +58,10 @@ type Sandbox struct {
 	// IdleStop stops the sandbox after this long with no terminal attached and no
 	// agent working ("2h"). Empty means never. airlock starts it again on demand.
 	IdleStop string `toml:"idle_stop"`
+	// WorktreeLink lists paths of the project root that each new worktree gets as
+	// a relative symlink to the main checkout's entry: LocalSettings.php, vendor.
+	// Only the user config and project settings files may set it.
+	WorktreeLink []string `toml:"worktree_link"`
 }
 
 // MinIdleStop is the shortest idle_stop: a sandbox that stops after seconds would
