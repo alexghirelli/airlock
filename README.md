@@ -81,7 +81,8 @@ airlock doctor               check the runtime, the firewall and the setup
 airlock build | update       build the image / rebuild it from scratch
 airlock init [path]          write this project's .airlock.toml from what it uses
 airlock config init|show|path|edit   your user config (init is per project, config init is yours)
-airlock --remote <ssh-host> <command>
+airlock remote push|pull|open <host> [path]   move the project to a server with git (see below)
+airlock --remote <ssh-host> <command>         run a command on a server over ssh
 ```
 
 ## What the sandbox is
@@ -270,6 +271,60 @@ against a real Herdr with agents changing state.
 
 Known limitation: on Windows the project's path is a host path, and the worktree column
 does not map it to the sandbox path, so worktrees show as `-`.
+## Remote servers: keep the agents running while the laptop sleeps
+
+`airlock --remote <host> <command>` runs airlock on a server over ssh, and Herdr
+keeps the agents alive there. `airlock remote` moves the project itself, with git:
+
+```
+airlock remote push <host> [path]   send the committed branch to the server
+airlock remote open <host> [path]   start or attach the sandbox there
+airlock remote pull <host> [path]   fetch the server's branches, for review
+```
+
+- **push** needs a branch and a clean tree: commit or stash first, because only
+  commits travel. `-b <branch>` pushes another local branch (names starting with `-`
+  or `+` are refused). `--force` does not mean a git force push: it allows the push
+  with uncommitted changes on this machine, which stay here. Pushing never rewrites
+  history on the server; a server branch with commits you lack makes git refuse, and
+  you pull first. It checks that `airlock` is installed on the server
+  (`curl -fsSL https://raw.githubusercontent.com/alexghirelli/airlock/main/install.sh | sh`
+  installs it there), refuses a server checkout with uncommitted changes, creates
+  `airlock-remote/<project>` in the server's home directory, adds a git remote
+  `airlock-<host>-<project>` to your repository, and switches the server's checkout to
+  the pushed branch. If that last switch fails, the branch is pushed but the server
+  stays on its old branch: fix it and rerun.
+- **open** is `airlock --remote <host> airlock-remote/<project>`. The path is
+  relative to the server's home directory, where ssh starts a command, so it is the
+  folder push wrote to. The sandbox runs with the **server's** configuration: your
+  local mounts, environment variables and MCP servers do not exist there.
+- **pull** fetches into `airlock-<host>-<project>/*` (pruning branches the server
+  deleted) and prints the branches that moved, with the commands to look at them
+  (`git log --oneline <branch>..<remote>/<branch>`) and to merge them
+  (`git merge <remote>/<branch>`). It never merges. Files the agent changed on the
+  server but did not commit do not travel: commit them inside the sandbox there
+  (`airlock --remote <host> shell airlock-remote/<project>`), then pull again.
+  Untracked files do not travel either.
+- Each project has its own folder and remote, so a worktree and its project are
+  separate on the server. Moving or renaming the project folder changes its name,
+  and the next push creates a new copy on the server; the old copy stays until you
+  delete it there.
+- Every ssh call opens a connection. For speed, an ssh `ControlMaster` setting in
+  `~/.ssh/config` for the host keeps one connection open for them all.
+
+Security notes:
+
+- `push` sends the committed history of the branch to the server, and the server
+  keeps it. Secrets from your environment and mounts are not copied, but a secret
+  committed to the repository is.
+- The server never needs access to your computer: the traffic is ssh and git.
+- What the agent wrote on the server is untrusted until you have reviewed it. Review
+  a pulled branch before you merge it, and run `airlock audit` after merging, before
+  you run the code on your computer.
+
+Tests use a fake ssh and git between two local folders (`AIRLOCK_SSH` names the ssh
+client, a hook for tests and unusual setups). This has not been run against a real
+server.
 
 ## Configuration
 
@@ -551,6 +606,7 @@ What it does **not** protect against:
 | `microvm` / `vm` backends | Rejected by the CLI. `gvisor` starts the container with `runsc` but has not been run through the test suite. |
 | `airlock login` | Runs Pi's and Claude Code's own login flows; checked up to the credential prompt only (no real login was made). `--reset` is untested. |
 | `[[mcp]]` | Written into Pi's MCP config (remote and stdio servers); the entry and the mounted command are tested, but not a full session against a real MCP server. |
+| `airlock remote` | Tested with a fake ssh and two local folders; never run against a real server. The server-side scripts run under `sh -c`, so the login shell can be anything that runs `sh` and `airlock`. |
 | Windows | The release archive compiles for it, but airlock has not been run there (WSL2 is the way to go, see `airlock doctor`). |
 
 ## Development

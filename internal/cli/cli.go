@@ -37,6 +37,7 @@ Usage:
   airlock wt [ls] | rm <name>  list worktrees / remove one (--force with changes)
   airlock wt prune [--force]   forget worktrees whose folder was deleted by hand (branches stay)
   airlock summary [worktree]   what a worktree changed: commits, files, uncommitted and untracked (--json)
+  airlock remote push|pull|open <host> [path]   keep the project on a server with git (see README)
   airlock rm --purge           also delete this project's own credentials volume (credentials.scope = per-project)
   airlock ls                   list sandboxes
   airlock inbox [--watch]      the agents of the running sandboxes and what they wait for (--watch notifies you)
@@ -79,7 +80,7 @@ Flags:
 
 // commands maps a first word to a command; anything else is a project path.
 var commands = map[string]bool{
-	"wt": true, "summary": true, "review": true, "shell": true, "exec": true, "stop": true, "restart": true, "mcp": true, "rm": true, "ls": true, "inbox": true, "login": true,
+	"wt": true, "summary": true, "remote": true, "review": true, "shell": true, "exec": true, "stop": true, "restart": true, "mcp": true, "rm": true, "ls": true, "inbox": true, "login": true,
 	"build": true, "update": true, "doctor": true, "audit": true, "config": true, "gc": true, "init": true,
 	"version": true, "help": true,
 }
@@ -208,7 +209,7 @@ func parseArgs(argv []string) (*args, error) {
 		positional = append([]string{"review"}, positional...)
 	}
 	switch a.command {
-	case "config", "login", "mcp", "wt", "summary":
+	case "config", "login", "mcp", "wt", "summary", "remote":
 		a.rest = append(positional, a.rest...)
 	default:
 		if len(positional) > 1 {
@@ -315,6 +316,8 @@ func (e *env) run(ctx context.Context) (int, error) {
 		return e.cmdWt(ctx)
 	case "summary":
 		return e.cmdSummary(ctx)
+	case "remote":
+		return e.cmdRemote(ctx)
 	}
 	return 2, fmt.Errorf("unknown command %q", e.a.command)
 }
