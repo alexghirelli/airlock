@@ -98,9 +98,10 @@ airlock --remote <ssh-host> <command>         run a command on a server over ssh
   that the agent cannot change (see [Security model](#security-model)).
 - `sudo` works inside, so agents can `apt install` and use `mise` for
   Node/Python/Go/Ruby. Installed tools persist until `airlock rm`.
-- Pi logins and settings live in a Docker volume, shared by all projects
-  (`credentials.scope = "shared"`) or per project. `airlock rm` keeps the volume, so a
-  recreated sandbox stays logged in; `airlock rm --purge` deletes a per-project one.
+- Pi and Claude Code logins and settings live in a Docker volume, shared by all projects
+  (`credentials.scope = "shared"`), per project, or per [account profile](#several-accounts-profiles).
+  `airlock rm` keeps the volume, so a recreated sandbox stays logged in; `airlock rm --purge`
+  deletes a per-project one.
 
 ## Worktrees: parallel work and Gerrit reviews
 
@@ -711,6 +712,39 @@ A sandbox stops after that long with no terminal attached and no agent working.
 a dev server for one. The setting applies the next time the sandbox starts
 (`airlock restart`).
 
+### Several accounts: profiles
+
+A personal Claude account and a company one must not meet. Give each its own login volume
+with a **profile**, and tie the profile to the projects that use it, in a settings file for
+those projects (`airlock config edit --project`, or a file in `~/.config/airlock/projects/`):
+
+```toml
+# ~/.config/airlock/projects/work.toml
+match = ["~/Work/*"]
+
+[credentials]
+profile = "work"
+```
+
+Projects that match get the volume `airlock-profile-work`; the others keep the shared one (or
+a profile of their own). Run `airlock login` once in a work project to log in to the company
+account there, and once in a personal one to log in to the other. What a profile separates:
+the provider logins, Pi's settings and installed packages, and the saved conversations. All the
+worktrees of a repository use the profile of the repository.
+
+- A profile wins over `credentials.scope`. `AIRLOCK_CREDENTIALS_PROFILE` sets it for one run.
+- A profile is a name (lowercase letters, digits, `-`, `_`). Only your user config and the
+  settings files in `projects/` may set it: the `.airlock.toml` of a repository is ignored
+  (with a warning), so a repository cannot pick which account its own code runs with.
+- Several projects share the volume of their profile, so `airlock rm --purge` and `airlock gc`
+  leave it alone; `airlock login --reset` in one of those projects wipes it for all of them.
+  `airlock doctor` shows which volume a project mounts.
+- What it does not separate: the tools volume, the tokens you pass from the host (`[env]`,
+  `git.token_env`) and the network. Set those per project as before.
+- One sandbox has one profile. Two accounts inside the same sandbox are not supported, because
+  every agent there could read both logins.
+- Changing the profile of an existing project recreates its sandbox (the volume changes).
+
 ### Example setups
 
 1. **Anthropic API key**: `default_model = "anthropic/<id>"`, run `airlock login`.
@@ -851,7 +885,9 @@ What it does **not** protect against:
   move or delete branches and tags that the others (and you) see, and add objects to
   the shared store. Review what a sandbox committed before you push it.
 - With `credentials.scope = "shared"`, any sandbox on the machine can read the
-  provider logins. `per-project` isolates them. `airlock login --reset` wipes them.
+  provider logins. `per-project` isolates them, and a `credentials.profile` isolates
+  them from every project that does not use the same profile. `airlock login --reset`
+  wipes them.
 - The toolchain volume is shared between projects.
 - The firewall allows DNS to the resolvers Docker forwards to (needed for name
   resolution), so DNS can carry data out.
@@ -866,6 +902,7 @@ What it does **not** protect against:
 | `--team` | The Herdr bootstrap and team scripts are written, but not verified end to end. Treat as experimental. |
 | `microvm` / `vm` backends | Rejected by the CLI. `gvisor` starts the container with `runsc` but has not been run through the test suite. |
 | `airlock login` | Runs Pi's and Claude Code's own login flows; checked up to the credential prompt only (no real login was made). `--reset` is untested. |
+| `credentials.profile` | The volume name, the config rules and the plan are unit tested; two real logins on two profiles were not made. |
 | `[[mcp]]` | Written into Pi's MCP config (remote and stdio servers); the entry and the mounted command are tested, but not a full session against a real MCP server. |
 | `airlock remote` | Tested with a fake ssh and two local folders; never run against a real server. The server-side scripts run under `sh -c`, so the login shell can be anything that runs `sh` and `airlock`. |
 | Windows | The release archive compiles for it, but airlock has not been run there (WSL2 is the way to go, see `airlock doctor`). |
