@@ -172,10 +172,13 @@ func (e *env) doctorProject(ctx context.Context, r *doctor.Report, l *loaded, b 
 	}
 
 	// Credentials.
-	vol := credsVolumeNameFor(p.FamilySlug(), cfg.Credentials.Scope)
-	if cfg.Credentials.Scope == "shared" {
-		r.Add("credentials", doctor.OK, "scope shared: volume "+vol+"; every sandbox on this machine can read the provider logins (per-project isolates them)", "")
-	} else {
+	vol, _ := sandbox.CredsVolume(cfg, p)
+	switch {
+	case cfg.Credentials.Profile != "":
+		r.Add("credentials", doctor.OK, fmt.Sprintf("profile %s: volume %s; only projects with this profile can read these logins", cfg.Credentials.Profile, vol), "")
+	case cfg.Credentials.Scope == "shared":
+		r.Add("credentials", doctor.OK, "scope shared: volume "+vol+"; every sandbox on this machine can read the provider logins (a profile or per-project isolates them)", "")
+	default:
 		r.Add("credentials", doctor.OK, "scope per-project: volume "+vol, "")
 	}
 	if cfg.Git.Mode == "push" {
@@ -194,13 +197,6 @@ func (e *env) doctorProject(ctx context.Context, r *doctor.Report, l *loaded, b 
 		return
 	}
 	e.doctorLive(ctx, r, b, name, cfg.Network.Mode, l)
-}
-
-func credsVolumeNameFor(slug, scope string) string {
-	if scope == "per-project" {
-		return sandbox.CredsVolumeBase + "-" + slug
-	}
-	return sandbox.CredsVolumeBase
 }
 
 func (e *env) doctorLive(ctx context.Context, r *doctor.Report, b backend.Backend, name, mode string, l *loaded) {

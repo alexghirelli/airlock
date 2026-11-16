@@ -439,6 +439,7 @@ func TestPolicyChangesWithNetworkMountsAndImage(t *testing.T) {
 		"memory":   "[sandbox]\nmemory=\"1g\"\n",
 		"mount":    "[[mount]]\nname=\"n\"\nhost=\"" + realTemp(t) + "\"\nmode=\"ro\"\n",
 		"scope":    "[credentials]\nscope=\"per-project\"\n",
+		"profile":  "[credentials]\nprofile=\"work\"\n",
 		"backend":  "[sandbox]\nbackend=\"gvisor\"\n",
 		"lifetime": "[sandbox]\nlifetime=\"ephemeral\"\n",
 	} {
@@ -931,6 +932,39 @@ func TestWorktreeConfigFileIsReadOnlyToo(t *testing.T) {
 	}
 	if b := findBind(testPlan(t, "", wt, nil), cfg); b == nil || !b.ReadOnly {
 		t.Errorf("config.worktree (core.hooksPath, core.fsmonitor) must be read-only: %+v", b)
+	}
+}
+
+func TestPlanCredentialsProfileVolume(t *testing.T) {
+	credsOf := func(toml string, p *Project) backend.VolumeMount {
+		for _, v := range testPlan(t, toml, p, nil).Spec.Volumes {
+			if v.Target == "/creds" {
+				return v
+			}
+		}
+		t.Fatal("no /creds volume")
+		return backend.VolumeMount{}
+	}
+	a, b := newProject(t), newProject(t)
+	// Two projects with one profile share a volume; it carries no project label,
+	// so gc and rm --purge cannot delete the logins of the other project.
+	va, vb := credsOf("[credentials]\nprofile=\"work\"\n", a), credsOf("[credentials]\nprofile=\"work\"\n", b)
+	if va.Name != "airlock-profile-work" || va.Name != vb.Name || len(va.Labels) != 0 {
+		t.Errorf("profile volumes: %+v %+v", va, vb)
+	}
+	// The profile wins over per-project, and is never one of the old volume names.
+	if v := credsOf("[credentials]\nscope=\"per-project\"\nprofile=\"work\"\n", a); v.Name != "airlock-profile-work" || len(v.Labels) != 0 {
+		t.Errorf("profile + per-project: %+v", v)
+	}
+	if v := credsOf("[credentials]\nprofile=\"personal\"\n", a); v.Name == va.Name {
+		t.Errorf("two profiles share a volume: %+v", v)
+	}
+	// Without a profile nothing changes.
+	if v := credsOf("", a); v.Name != "airlock-creds" {
+		t.Errorf("default volume: %+v", v)
+	}
+	if v := credsOf("[credentials]\nscope=\"per-project\"\n", a); v.Name != "airlock-creds-"+a.Slug || v.Labels[backend.LabelProject] == "" {
+		t.Errorf("per-project volume: %+v", v)
 	}
 }
 

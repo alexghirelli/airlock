@@ -34,9 +34,6 @@ type Findings struct {
 	Agents []string `json:"agents,omitempty"`
 	// Notes are facts worth showing that do not change the file.
 	Notes []string `json:"notes,omitempty"`
-	// WebApp is set when composer.json names acme/webapp: init then
-	// suggests a per-project file with a [[runner]] for the checkout.
-	WebApp bool `json:"webapp,omitempty"`
 }
 
 // Pin is a toolchain that a version file already pins.
@@ -468,28 +465,14 @@ func pythonVersion(file, text string) (ver, why string) {
 	return defaultPython, file + ": no requires-python; airlock's default"
 }
 
-// composer proposes PHP from apt. WebApp also needs a database driver.
+// composer proposes PHP from apt.
 func (s *scan) composer() {
-	text, ok := s.read("composer.json")
+	_, ok := s.read("composer.json")
 	if !ok {
 		return
 	}
-	var c struct {
-		Name string `json:"name"`
-	}
-	_ = json.Unmarshal([]byte(text), &c) // still PHP if the file is not valid JSON
-	add := func(pkg, why string) {
-		s.f.Apt = append(s.f.Apt, Proposal{Spec: pkg, From: "composer.json", Why: why})
-	}
 	for _, p := range phpPackages {
-		add(p.pkg, p.why)
-	}
-	if c.Name == "acme/webapp" {
-		add("php-mysql", "composer.json: WebApp database driver")
-		add("php-sqlite3", "composer.json: WebApp database driver (SQLite needs no server)")
-		s.f.WebApp = true
-		s.f.Notes = append(s.f.Notes,
-			"WebApp needs a database. airlock runs no database containers yet: use SQLite, or a database on the host or LAN opened with network.allow_cidrs")
+		s.f.Apt = append(s.f.Apt, Proposal{Spec: p.pkg, From: "composer.json", Why: p.why})
 	}
 }
 

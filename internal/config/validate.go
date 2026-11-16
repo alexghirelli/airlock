@@ -53,6 +53,9 @@ func (c *Config) Validate() error {
 	add(oneOf("sandbox.backend", c.Sandbox.Backend, Backends))
 	add(oneOf("network.mode", c.Network.Mode, NetworkModes))
 	add(oneOf("credentials.scope", c.Credentials.Scope, CredScopes))
+	if p := c.Credentials.Profile; p != "" && !nameRe.MatchString(p) {
+		add(fmt.Errorf("credentials.profile: %q is not a name (lowercase letters, digits, - and _, at most 32)", p))
+	}
 	add(oneOf("git.mode", c.Git.Mode, GitModes))
 	add(oneOf("sandbox.worktree_isolation", c.Sandbox.WorktreeIsolation, WorktreeIsolations))
 	add(oneOf("extras.claude_code", c.Extras.ClaudeCode, ClaudeModes))

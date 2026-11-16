@@ -30,7 +30,7 @@ func TestParseChange(t *testing.T) {
 		"https://gerrit.example.org/r/c/acme/webapp/+/12345":       {Forge: Gerrit, Number: 12345, RepoHost: "gerrit.example.org", RepoPath: "acme/webapp"},
 		"https://gerrit.example.org/r/c/acme/webapp/+/12345/7":     {Forge: Gerrit, Number: 12345, Patchset: 7, RepoHost: "gerrit.example.org", RepoPath: "acme/webapp"},
 		"https://gerrit.example.org/r/c/acme/webapp/+/12345/7?x=y": {Forge: Gerrit, Number: 12345, Patchset: 7, RepoHost: "gerrit.example.org", RepoPath: "acme/webapp"},
-		"https://gerrit.example.org/#/c/12345/2":                      {Forge: Gerrit, Number: 12345, Patchset: 2, RepoHost: "gerrit.example.org"},
+		"https://gerrit.example.org/#/c/12345/2":                   {Forge: Gerrit, Number: 12345, Patchset: 2, RepoHost: "gerrit.example.org"},
 		"https://gerrit.example.org/#/c/acme/webapp/+/12345/2":     {Forge: Gerrit, Number: 12345, Patchset: 2, RepoHost: "gerrit.example.org", RepoPath: "acme/webapp"},
 
 		"https://github.com/acme/widgets/pull/321":                                      {Forge: GitHub, Number: 321, RepoHost: "github.com", RepoPath: "acme/widgets"},
@@ -77,9 +77,9 @@ func TestSplitRemoteURL(t *testing.T) {
 		"https://github.com/acme/widgets.git":                 {"github.com", "acme/widgets"},
 		"git@github.com:acme/widgets.git":                     {"github.com", "acme/widgets"},
 		"ssh://git@gitlab.example.org:2222/team/sub/proj.git": {"gitlab.example.org", "team/sub/proj"},
-		"ssh://me@gerrit.example.org:29418/acme/webapp":    {"gerrit.example.org", "acme/webapp"},
+		"ssh://me@gerrit.example.org:29418/acme/webapp":       {"gerrit.example.org", "acme/webapp"},
 		"https://www.GitHub.com/acme/widgets/":                {"github.com", "acme/widgets"},
-		"https://gerrit.example.org/r/acme/webapp":         {"gerrit.example.org", "r/acme/webapp"},
+		"https://gerrit.example.org/r/acme/webapp":            {"gerrit.example.org", "r/acme/webapp"},
 	}
 	for in, want := range cases {
 		if h, p := splitRemoteURL(in); h != want[0] || p != want[1] {

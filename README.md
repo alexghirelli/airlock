@@ -98,9 +98,10 @@ airlock --remote <ssh-host> <command>         run a command on a server over ssh
   that the agent cannot change (see [Security model](#security-model)).
 - `sudo` works inside, so agents can `apt install` and use `mise` for
   Node/Python/Go/Ruby. Installed tools persist until `airlock rm`.
-- Pi logins and settings live in a Docker volume, shared by all projects
-  (`credentials.scope = "shared"`) or per project. `airlock rm` keeps the volume, so a
-  recreated sandbox stays logged in; `airlock rm --purge` deletes a per-project one.
+- Pi and Claude Code logins and settings live in a Docker volume, shared by all projects
+  (`credentials.scope = "shared"`), per project, or per [account profile](#several-accounts-profiles).
+  `airlock rm` keeps the volume, so a recreated sandbox stays logged in; `airlock rm --purge`
+  deletes a per-project one.
 
 ## Worktrees: parallel work and Gerrit reviews
 
@@ -109,7 +110,7 @@ next to your own feature. By default every worktree shows up as a **Herdr worksp
 the same session**, so you switch between them without opening terminals.
 
 ```sh
-airlock wt add rate-limit "rate limiting of the API, only includes/api/"
+airlock wt add rate-limit "rate limiting of the API, only src/api/"
 airlock review 12345                       # a Gerrit change, a GitHub pull request or a GitLab merge request
 airlock review https://github.com/acme/widgets/pull/321     # also GitLab merge requests and Bitbucket pull requests
 airlock review https://gerrit.example.org/r/c/core/+/12345/3 "check the SQL"
@@ -228,7 +229,7 @@ airlock summary --json          # the same data for scripts
 ### Keeping a worktree apart
 
 A sandbox is the boundary, not a folder: agents in the same sandbox can read and write
-each other's worktrees, and the project's untracked files (a `local.php` with
+each other's worktrees, and the project's untracked files (a `config/local.php` with
 database credentials, say). That is fine for your own branches; it is a risk for a
 patch from someone else, because instructions hidden in it may steer the agent that
 reads it. So a worktree can have a sandbox of its own:
@@ -268,29 +269,29 @@ files. See [Security model](#security-model).
 
 Some projects are tested in a container you already run: a DDEV web container, a plain
 container, or a docker compose service. A `[[runner]]` in your user config names one, and
-`airlock wt run` runs a command in it, against a worktree. The myapp example, with a
+`airlock wt run` runs a command in it, against a worktree. An example, with a
 running container (recommended):
 
 ```toml
 [[runner]]
-name      = "mw"
-container = "myapp-web-1"   # docker ps lists it
-mount     = "/var/www/html/w"       # where the project root is mounted in that container
+name      = "web"
+container = "myapp-web-1"           # docker ps lists it
+mount     = "/var/www/html"         # where the project root is mounted in that container
 # user    = "501:20"                # optional, passed as --user
 ```
 
 The compose form works too: `compose = "~/Sites/myapp/docker-compose.yml"` (or a list
-of files, each passed as its own `-f`, in order) with `service = "webapp"` instead of
+of files, each passed as its own `-f`, in order) with `service = "web"` instead of
 `container`. With an explicit `-f`, docker compose does not load `docker-compose.override.yml`
 by itself: list it. Only docker compose v2 is supported.
 
 ```sh
-airlock wt run mw rate-limit -- composer phpunit:entrypoint -- tests/phpunit/unit/includes/Foo
-airlock wt run mw . -- composer phpunit:entrypoint   # the main checkout
+airlock wt run web rate-limit -- composer test -- tests/Unit/Foo
+airlock wt run web . -- composer test   # the main checkout
 ```
 
 airlock maps the worktree to its place under the mount (here
-`/var/www/html/w/.worktrees/rate-limit`) and runs the command there with docker. The
+`/var/www/html/.worktrees/rate-limit`) and runs the command there with docker. The
 command goes as separate arguments after the container or service name, never through a
 shell; the exit code is the command's. `--print` shows the docker command instead,
 shell-quoted for pasting, and runs nothing. A project's `.airlock.toml` cannot define a
@@ -318,9 +319,6 @@ so code in the worktree can print anything: write to your clipboard, change the 
 title. Look at what the agent changed first (`airlock summary <worktree>`, `airlock audit`).
 To let the agent run the tests itself, inside the sandbox, install what they need there
 (`extras.mise`, `extras.apt`): it then runs them with its own changes, under the sandbox.
-
-`airlock init` on a WebApp checkout prints a per-project file for your config directory
-with the worktree links and a commented runner to paste. It writes nothing.
 
 ### Inbox: what your agents are waiting for
 
@@ -518,7 +516,7 @@ folders it applies to:
 match = ["~/Sites/myapp", "~/work/*"]   # required: the project roots (see below)
 
 [sandbox]
-worktree_link = ["local.php", "vendor", "extensions/*", "skins/*", ".env"]
+worktree_link = ["config/local.php", "vendor", "plugins/*", ".env"]
 
 [[mount]]                                      # any key of the user config works here
 name = "notes"
@@ -577,7 +575,7 @@ would be, so read one before you copy it.
 
 #### Links into new worktrees: `sandbox.worktree_link`
 
-A worktree shares the repository, not the folder's untracked files: `local.php`, a
+A worktree shares the repository, not the folder's untracked files: a `config/local.php`, a
 `vendor` folder, a `.env`. `worktree_link` lists paths of the project root (relative, `/`
 separated, patterns allowed) that each new worktree should get. When `airlock wt add`, a new
 `airlock review` or `airlock wt link [name]` runs, airlock creates for every matching path a
@@ -604,16 +602,16 @@ worktrees, and running it again creates nothing new.
   stage them, so exclude them (in `.git/info/exclude`, shared by the worktrees) if they get in
   your way.
 
-For WebApp core, in `~/.config/airlock/projects/myapp.toml`:
+For a PHP app with a local config file and plugins, in `~/.config/airlock/projects/myapp.toml`:
 
 ```toml
 match = ["~/Sites/myapp"]
 
 [sandbox]
-worktree_link = ["local.php", "vendor", "extensions/*", "skins/*", ".env"]
+worktree_link = ["config/local.php", "vendor", "plugins/*", ".env"]
 ```
 
-Tracked extensions and skins are skipped, so only the ones you have locally are linked.
+Tracked plugins are skipped, so only the ones you have locally are linked.
 `worktree_link` in a project's `.airlock.toml` is ignored, and airlock says so.
 
 ### Starting a project: airlock init
@@ -710,6 +708,39 @@ A sandbox stops after that long with no terminal attached and no agent working.
 [Agents](#agents-use-the-one-you-prefer)). Anything else running in it stops too,
 a dev server for one. The setting applies the next time the sandbox starts
 (`airlock restart`).
+
+### Several accounts: profiles
+
+A personal Claude account and a company one must not meet. Give each its own login volume
+with a **profile**, and tie the profile to the projects that use it, in a settings file for
+those projects (`airlock config edit --project`, or a file in `~/.config/airlock/projects/`):
+
+```toml
+# ~/.config/airlock/projects/work.toml
+match = ["~/Work/*"]
+
+[credentials]
+profile = "work"
+```
+
+Projects that match get the volume `airlock-profile-work`; the others keep the shared one (or
+a profile of their own). Run `airlock login` once in a work project to log in to the company
+account there, and once in a personal one to log in to the other. What a profile separates:
+the provider logins, Pi's settings and installed packages, and the saved conversations. All the
+worktrees of a repository use the profile of the repository.
+
+- A profile wins over `credentials.scope`. `AIRLOCK_CREDENTIALS_PROFILE` sets it for one run.
+- A profile is a name (lowercase letters, digits, `-`, `_`). Only your user config and the
+  settings files in `projects/` may set it: the `.airlock.toml` of a repository is ignored
+  (with a warning), so a repository cannot pick which account its own code runs with.
+- Several projects share the volume of their profile, so `airlock rm --purge` and `airlock gc`
+  leave it alone; `airlock login --reset` in one of those projects wipes it for all of them.
+  `airlock doctor` shows which volume a project mounts.
+- What it does not separate: the tools volume, the tokens you pass from the host (`[env]`,
+  `git.token_env`) and the network. Set those per project as before.
+- One sandbox has one profile. Two accounts inside the same sandbox are not supported, because
+  every agent there could read both logins.
+- Changing the profile of an existing project recreates its sandbox (the volume changes).
 
 ### Example setups
 
@@ -851,7 +882,9 @@ What it does **not** protect against:
   move or delete branches and tags that the others (and you) see, and add objects to
   the shared store. Review what a sandbox committed before you push it.
 - With `credentials.scope = "shared"`, any sandbox on the machine can read the
-  provider logins. `per-project` isolates them. `airlock login --reset` wipes them.
+  provider logins. `per-project` isolates them, and a `credentials.profile` isolates
+  them from every project that does not use the same profile. `airlock login --reset`
+  wipes them.
 - The toolchain volume is shared between projects.
 - The firewall allows DNS to the resolvers Docker forwards to (needed for name
   resolution), so DNS can carry data out.
@@ -866,6 +899,7 @@ What it does **not** protect against:
 | `--team` | The Herdr bootstrap and team scripts are written, but not verified end to end. Treat as experimental. |
 | `microvm` / `vm` backends | Rejected by the CLI. `gvisor` starts the container with `runsc` but has not been run through the test suite. |
 | `airlock login` | Runs Pi's and Claude Code's own login flows; checked up to the credential prompt only (no real login was made). `--reset` is untested. |
+| `credentials.profile` | The volume name, the config rules and the plan are unit tested; two real logins on two profiles were not made. |
 | `[[mcp]]` | Written into Pi's MCP config (remote and stdio servers); the entry and the mounted command are tested, but not a full session against a real MCP server. |
 | `airlock remote` | Tested with a fake ssh and two local folders; never run against a real server. The server-side scripts run under `sh -c`, so the login shell can be anything that runs `sh` and `airlock`. |
 | Windows | The release archive compiles for it, but airlock has not been run there (WSL2 is the way to go, see `airlock doctor`). |

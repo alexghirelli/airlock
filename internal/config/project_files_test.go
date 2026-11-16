@@ -380,3 +380,53 @@ func TestProjectFileTemplateMatchesItsRoot(t *testing.T) {
 		}
 	}
 }
+
+// A profile names which logins a project mounts, so it comes from the user's own
+// files; the repo's .airlock.toml must not be able to pick another account.
+func TestCredentialsProfileComesFromTrustedFilesOnly(t *testing.T) {
+	userPath, root := projectFixture(t, "", nil)
+	write(t, filepath.Join(filepath.Dir(userPath), ProjectFilesDirName, "work.toml"),
+		"match = [\""+root+"\"]\n[credentials]\nprofile = \"work\"\n")
+	res, err := loadProject(t, userPath, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := res.Config.Credentials.Profile; got != "work" {
+		t.Errorf("profile from the project file = %q", got)
+	}
+
+	// The project's own file asks for another one: ignored, with a warning.
+	write(t, filepath.Join(root, ProjectConfigName), "[credentials]\nprofile = \"personal\"\n")
+	res, err = loadProject(t, userPath, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := res.Config.Credentials.Profile; got != "work" {
+		t.Errorf(".airlock.toml changed the profile to %q", got)
+	}
+	if !strings.Contains(strings.Join(res.Warnings, "\n"), "credentials.profile") {
+		t.Errorf("no warning about the ignored profile: %v", res.Warnings)
+	}
+
+	// With no trusted file at all the repo cannot set one either.
+	userPath, root = projectFixture(t, "", nil)
+	write(t, filepath.Join(root, ProjectConfigName), "[credentials]\nprofile = \"work\"\n")
+	if res, err = loadProject(t, userPath, root); err != nil || res.Config.Credentials.Profile != "" {
+		t.Errorf("repo-only profile: %v %q", err, res.Config.Credentials.Profile)
+	}
+}
+
+func TestCredentialsProfileIsValidatedAndSetByEnv(t *testing.T) {
+	for _, bad := range []string{"Work", "../x", "a b", "-x", strings.Repeat("a", 33)} {
+		if _, err := load(t, "[credentials]\nprofile = \""+bad+"\"\n", "", nil); err == nil {
+			t.Errorf("profile %q accepted", bad)
+		}
+	}
+	r, err := load(t, "[credentials]\nprofile = \"work\"\n", "", map[string]string{"AIRLOCK_CREDENTIALS_PROFILE": "client_2"})
+	if err != nil || r.Config.Credentials.Profile != "client_2" {
+		t.Errorf("env override: %v %q", err, r.Config.Credentials.Profile)
+	}
+	if _, err := load(t, "", "", map[string]string{"AIRLOCK_CREDENTIALS_PROFILE": "../x"}); err == nil {
+		t.Error("env profile with a path accepted")
+	}
+}
