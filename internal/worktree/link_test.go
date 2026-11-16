@@ -72,11 +72,11 @@ func TestLinkCreatesRelativeLinksToTheMainCheckout(t *testing.T) {
 	}
 
 	want := map[string]string{
-		"local.php": "../../local.php",
-		"vendor":            "../../vendor",
-		"skins/Chameleon":   "../../../skins/Chameleon",
-		"extensions/Foo":    "../../../extensions/Foo",
-		".env":              "../../.env",
+		"local.php":       "../../local.php",
+		"vendor":          "../../vendor",
+		"skins/Chameleon": "../../../skins/Chameleon",
+		"extensions/Foo":  "../../../extensions/Foo",
+		".env":            "../../.env",
 	}
 	got := map[string]string{}
 	for _, l := range res.Linked {
