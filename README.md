@@ -110,7 +110,7 @@ next to your own feature. By default every worktree shows up as a **Herdr worksp
 the same session**, so you switch between them without opening terminals.
 
 ```sh
-airlock wt add rate-limit "rate limiting of the API, only includes/api/"
+airlock wt add rate-limit "rate limiting of the API, only src/api/"
 airlock review 12345                       # a Gerrit change, a GitHub pull request or a GitLab merge request
 airlock review https://github.com/acme/widgets/pull/321     # also GitLab merge requests and Bitbucket pull requests
 airlock review https://gerrit.example.org/r/c/core/+/12345/3 "check the SQL"
@@ -229,7 +229,7 @@ airlock summary --json          # the same data for scripts
 ### Keeping a worktree apart
 
 A sandbox is the boundary, not a folder: agents in the same sandbox can read and write
-each other's worktrees, and the project's untracked files (a `local.php` with
+each other's worktrees, and the project's untracked files (a `config/local.php` with
 database credentials, say). That is fine for your own branches; it is a risk for a
 patch from someone else, because instructions hidden in it may steer the agent that
 reads it. So a worktree can have a sandbox of its own:
@@ -269,29 +269,29 @@ files. See [Security model](#security-model).
 
 Some projects are tested in a container you already run: a DDEV web container, a plain
 container, or a docker compose service. A `[[runner]]` in your user config names one, and
-`airlock wt run` runs a command in it, against a worktree. The myapp example, with a
+`airlock wt run` runs a command in it, against a worktree. An example, with a
 running container (recommended):
 
 ```toml
 [[runner]]
-name      = "mw"
-container = "myapp-web-1"   # docker ps lists it
-mount     = "/var/www/html/w"       # where the project root is mounted in that container
+name      = "web"
+container = "myapp-web-1"           # docker ps lists it
+mount     = "/var/www/html"         # where the project root is mounted in that container
 # user    = "501:20"                # optional, passed as --user
 ```
 
 The compose form works too: `compose = "~/Sites/myapp/docker-compose.yml"` (or a list
-of files, each passed as its own `-f`, in order) with `service = "webapp"` instead of
+of files, each passed as its own `-f`, in order) with `service = "web"` instead of
 `container`. With an explicit `-f`, docker compose does not load `docker-compose.override.yml`
 by itself: list it. Only docker compose v2 is supported.
 
 ```sh
-airlock wt run mw rate-limit -- composer phpunit:entrypoint -- tests/phpunit/unit/includes/Foo
-airlock wt run mw . -- composer phpunit:entrypoint   # the main checkout
+airlock wt run web rate-limit -- composer test -- tests/Unit/Foo
+airlock wt run web . -- composer test   # the main checkout
 ```
 
 airlock maps the worktree to its place under the mount (here
-`/var/www/html/w/.worktrees/rate-limit`) and runs the command there with docker. The
+`/var/www/html/.worktrees/rate-limit`) and runs the command there with docker. The
 command goes as separate arguments after the container or service name, never through a
 shell; the exit code is the command's. `--print` shows the docker command instead,
 shell-quoted for pasting, and runs nothing. A project's `.airlock.toml` cannot define a
@@ -319,9 +319,6 @@ so code in the worktree can print anything: write to your clipboard, change the 
 title. Look at what the agent changed first (`airlock summary <worktree>`, `airlock audit`).
 To let the agent run the tests itself, inside the sandbox, install what they need there
 (`extras.mise`, `extras.apt`): it then runs them with its own changes, under the sandbox.
-
-`airlock init` on a WebApp checkout prints a per-project file for your config directory
-with the worktree links and a commented runner to paste. It writes nothing.
 
 ### Inbox: what your agents are waiting for
 
@@ -519,7 +516,7 @@ folders it applies to:
 match = ["~/Sites/myapp", "~/work/*"]   # required: the project roots (see below)
 
 [sandbox]
-worktree_link = ["local.php", "vendor", "extensions/*", "skins/*", ".env"]
+worktree_link = ["config/local.php", "vendor", "plugins/*", ".env"]
 
 [[mount]]                                      # any key of the user config works here
 name = "notes"
@@ -578,7 +575,7 @@ would be, so read one before you copy it.
 
 #### Links into new worktrees: `sandbox.worktree_link`
 
-A worktree shares the repository, not the folder's untracked files: `local.php`, a
+A worktree shares the repository, not the folder's untracked files: a `config/local.php`, a
 `vendor` folder, a `.env`. `worktree_link` lists paths of the project root (relative, `/`
 separated, patterns allowed) that each new worktree should get. When `airlock wt add`, a new
 `airlock review` or `airlock wt link [name]` runs, airlock creates for every matching path a
@@ -605,16 +602,16 @@ worktrees, and running it again creates nothing new.
   stage them, so exclude them (in `.git/info/exclude`, shared by the worktrees) if they get in
   your way.
 
-For WebApp core, in `~/.config/airlock/projects/myapp.toml`:
+For a PHP app with a local config file and plugins, in `~/.config/airlock/projects/myapp.toml`:
 
 ```toml
 match = ["~/Sites/myapp"]
 
 [sandbox]
-worktree_link = ["local.php", "vendor", "extensions/*", "skins/*", ".env"]
+worktree_link = ["config/local.php", "vendor", "plugins/*", ".env"]
 ```
 
-Tracked extensions and skins are skipped, so only the ones you have locally are linked.
+Tracked plugins are skipped, so only the ones you have locally are linked.
 `worktree_link` in a project's `.airlock.toml` is ignored, and airlock says so.
 
 ### Starting a project: airlock init
