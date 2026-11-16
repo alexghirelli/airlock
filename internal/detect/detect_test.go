@@ -137,16 +137,6 @@ func TestScan(t *testing.T) {
 			apt:   []string{"php-cli", "php-mbstring", "php-xml", "php-intl", "php-curl", "php-zip", "composer"},
 		},
 		{
-			name:  "webapp adds drivers",
-			files: fstest.MapFS{"composer.json": {Data: []byte(`{"name":"acme/webapp"}`)}},
-			apt:   []string{"php-cli", "php-mbstring", "php-xml", "php-intl", "php-curl", "php-zip", "composer", "php-mysql", "php-sqlite3"},
-		},
-		{
-			name:  "invalid webapp composer.json is still PHP, without the drivers",
-			files: fstest.MapFS{"composer.json": {Data: []byte(`{"name": "acme/webapp"`)}},
-			apt:   []string{"php-cli", "php-mbstring", "php-xml", "php-intl", "php-curl", "php-zip", "composer"},
-		},
-		{
 			name: "compose services in root and one level down",
 			files: fstest.MapFS{
 				"compose.yaml":              {Data: []byte("services:\n  db:\n    image: mariadb:11\n  web:\n    image: nginx:1\n  # image: redis:7\n")},
@@ -364,9 +354,6 @@ func TestRenderLoads(t *testing.T) {
 			"pyproject.toml": {Data: []byte("[project]\nrequires-python = \">=3.11\"\n")},
 			"Cargo.toml":     {Data: []byte("[package]\n")},
 		}},
-		{"webapp", fstest.MapFS{
-			"composer.json": {Data: []byte(`{"name":"acme/webapp"}`)},
-		}},
 		{"ruby with a pinned node", fstest.MapFS{
 			"Gemfile": {Data: []byte("ruby \"3.3.0\"\n")},
 			".nvmrc":  {Data: []byte("22\n")},
@@ -442,28 +429,5 @@ func TestSuggestions(t *testing.T) {
 	capped := Suggestions(Findings{}, []string{".env"}, true)
 	if len(capped) != 1 || !strings.HasSuffix(capped[0], "and more") {
 		t.Errorf("capped suggestions = %q", capped)
-	}
-}
-
-func TestWebAppIsSuggestedOnlyForWebApp(t *testing.T) {
-	mw := Scan(fstest.MapFS{"composer.json": {Data: []byte(`{"name":"acme/webapp"}`)}})
-	if !mw.WebApp {
-		t.Fatal("acme/webapp not recognised")
-	}
-	found := false
-	for _, s := range Suggestions(mw, nil, false) {
-		found = found || strings.Contains(s, "acme/webapp")
-	}
-	if !found {
-		t.Error("no webapp suggestion")
-	}
-	other := Scan(fstest.MapFS{"composer.json": {Data: []byte(`{"name":"acme/app"}`)}})
-	if other.WebApp {
-		t.Error("acme/app marked as WebApp")
-	}
-	for _, s := range Suggestions(other, nil, false) {
-		if strings.Contains(s, "webapp") {
-			t.Errorf("suggestion for a non-WebApp project: %q", s)
-		}
 	}
 }
