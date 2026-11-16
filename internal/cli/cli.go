@@ -41,7 +41,7 @@ Usage:
   airlock wt link [name]       link the sandbox.worktree_link paths into a worktree (all of them without a name)
   airlock summary [worktree]   what a worktree changed: commits, files, uncommitted and untracked (--json)
   airlock remote push|pull|open <host> [path]   keep the project on a server with git (see README)
-  airlock rm --purge           also delete this project's own credentials volume (credentials.scope = per-project)
+  airlock rm --purge           also delete this project's own credentials volume (credentials.scope = per-project; a profile's is kept)
   airlock ls                   list sandboxes
   airlock inbox [--watch]      the agents of the running sandboxes and what they wait for (--watch notifies you)
   airlock gc [--force]         list (or with --force remove) what deleted projects and old releases left behind

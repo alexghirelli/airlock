@@ -85,6 +85,11 @@ type Network struct {
 
 type Credentials struct {
 	Scope string `toml:"scope"` // shared | per-project
+	// Profile names a login volume of its own (airlock-profile-<name>), shared by
+	// every project that names it, so a work account and a personal one never meet.
+	// It wins over Scope. Only the user's config and the trusted per-project files
+	// may set it: a project's .airlock.toml could otherwise pick another account.
+	Profile string `toml:"profile"`
 }
 
 type Git struct {

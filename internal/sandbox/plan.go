@@ -28,7 +28,24 @@ const (
 	NetworkName     = "airlock"
 	ToolsVolume     = "airlock-tools"
 	CredsVolumeBase = "airlock-creds"
+	// ProfileVolumePrefix starts the name of a credentials.profile volume. It does
+	// not begin with CredsVolumeBase, so it never collides with a project's slug.
+	ProfileVolumePrefix = "airlock-profile-"
 )
+
+// CredsVolume names the volume mounted at /creds and the labels it is created
+// with. A profile's volume has no project label: several projects use it, so
+// `airlock gc` and `rm --purge` leave it alone.
+func CredsVolume(c *config.Config, p *Project) (string, map[string]string) {
+	switch {
+	case c.Credentials.Profile != "":
+		return ProfileVolumePrefix + c.Credentials.Profile, nil
+	case c.Credentials.Scope == "per-project":
+		// The label is what lets `airlock gc` tell that the project is gone.
+		return CredsVolumeBase + "-" + p.FamilySlug(), map[string]string{backend.LabelKind: backend.KindCredentials, backend.LabelProject: p.RepoRoot()}
+	}
+	return CredsVolumeBase, nil
+}
 
 // Capabilities kept in the container. Everything else is dropped. NET_ADMIN is
 // only for the entrypoint's firewall and is removed from the bounding set
@@ -213,13 +230,7 @@ func BuildPlan(in PlanInput) (*Plan, error) {
 	masks, maskWarn := ignoreMasks(p)
 	plan.Warnings = append(plan.Warnings, maskWarn...)
 
-	credsVol := CredsVolumeBase
-	var credsLabels map[string]string
-	if c.Credentials.Scope == "per-project" {
-		credsVol = CredsVolumeBase + "-" + p.FamilySlug()
-		// What lets `airlock gc` tell that the project is gone.
-		credsLabels = map[string]string{backend.LabelKind: backend.KindCredentials, backend.LabelProject: p.RepoRoot()}
-	}
+	credsVol, credsLabels := CredsVolume(c, p)
 	volumes := []backend.VolumeMount{
 		{Name: credsVol, Target: "/creds", Labels: credsLabels},
 		{Name: ToolsVolume, Target: "/home/agent/.local/share/mise"},

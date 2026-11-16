@@ -95,7 +95,7 @@ func (e *env) cmdLogin(ctx context.Context) (int, error) {
 		if !validProvider(p) {
 			return 2, fmt.Errorf("invalid provider name %q", p)
 		}
-		e.errf("airlock: logging in to %s (credentials are stored in the %s volume, scope %q)", p, credsVolumeName(m, cfg), cfg.Credentials.Scope)
+		e.errf("airlock: logging in to %s (credentials are stored in the %s volume%s)", p, credsVolumeName(m, cfg), credsKind(cfg))
 		code, err := m.Attach(ctx, []string{"pi", "auth", "login", p, "--no-browser"})
 		if err != nil {
 			return 1, err
@@ -151,10 +151,27 @@ func validProvider(p string) bool {
 }
 
 func credsVolumeName(m *sandbox.Manager, cfg *config.Config) string {
-	if cfg.Credentials.Scope == "per-project" {
-		return sandbox.CredsVolumeBase + "-" + m.Project.FamilySlug()
+	name, _ := sandbox.CredsVolume(cfg, m.Project)
+	return name
+}
+
+// credsKind describes how the volume was chosen, for the login message.
+func credsKind(cfg *config.Config) string {
+	if cfg.Credentials.Profile != "" {
+		return fmt.Sprintf(", profile %q", cfg.Credentials.Profile)
 	}
-	return sandbox.CredsVolumeBase
+	return fmt.Sprintf(", scope %q", cfg.Credentials.Scope)
+}
+
+// credsWho says whose logins a credentials volume holds, for messages.
+func credsWho(cfg *config.Config) string {
+	switch {
+	case cfg.Credentials.Profile != "":
+		return "every project with the profile " + cfg.Credentials.Profile
+	case cfg.Credentials.Scope == "per-project":
+		return "this project's sandbox"
+	}
+	return "every sandbox on this machine"
 }
 
 // resetLogins wipes the credentials volume. It empties the volume through a
@@ -162,11 +179,7 @@ func credsVolumeName(m *sandbox.Manager, cfg *config.Config) string {
 // sandbox (stopped ones included) cannot be removed.
 func (e *env) resetLogins(ctx context.Context, m *sandbox.Manager, cfg *config.Config) (int, error) {
 	vol := credsVolumeName(m, cfg)
-	scope := "every sandbox on this machine"
-	if cfg.Credentials.Scope == "per-project" {
-		scope = "this project's sandbox"
-	}
-	if !e.confirm(fmt.Sprintf("This deletes all provider logins, Pi settings, sessions and installed Pi packages stored in the %s volume, for %s. Continue?", vol, scope)) {
+	if !e.confirm(fmt.Sprintf("This deletes all provider logins, Pi settings, sessions and installed Pi packages stored in the %s volume, for %s. Continue?", vol, credsWho(cfg))) {
 		return 1, errors.New("aborted (nothing was deleted)")
 	}
 	created, err := m.Up(ctx)

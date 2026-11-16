@@ -399,6 +399,7 @@ func applyEnv(c *Config, getenv func(string) string) error {
 	str("AIRLOCK_SANDBOX_MEMORY", &c.Sandbox.Memory)
 	str("AIRLOCK_NETWORK_MODE", &c.Network.Mode)
 	str("AIRLOCK_CREDENTIALS_SCOPE", &c.Credentials.Scope)
+	str("AIRLOCK_CREDENTIALS_PROFILE", &c.Credentials.Profile)
 	str("AIRLOCK_GIT_MODE", &c.Git.Mode)
 	str("AIRLOCK_GIT_TOKEN_ENV", &c.Git.TokenEnv)
 	str("AIRLOCK_PI_DEFAULT_MODEL", &c.Pi.DefaultModel)

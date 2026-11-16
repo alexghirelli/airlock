@@ -154,8 +154,8 @@ func (e *env) cmdStop(ctx context.Context) (int, error) {
 // own, which `airlock rm` keeps so that recreating the sandbox does not mean logging
 // in again. The shared volume belongs to every project and is left alone.
 func (e *env) purgeCredentials(ctx context.Context, m *sandbox.Manager, cfg *config.Config) (int, error) {
-	if cfg.Credentials.Scope != "per-project" {
-		e.errf("airlock: the credentials volume is shared by every project, so --purge leaves it; airlock login --reset empties it")
+	if cfg.Credentials.Profile != "" || cfg.Credentials.Scope != "per-project" {
+		e.errf("airlock: the credentials volume is shared by %s, so --purge leaves it; airlock login --reset empties it", credsWho(cfg))
 		return 0, nil
 	}
 	vol := credsVolumeName(m, cfg)

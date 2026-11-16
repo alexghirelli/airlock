@@ -30,6 +30,8 @@ allow_cidrs = []                 # holes in the LAN block, e.g. a local registry
 
 [credentials]
 scope = "shared"                 # shared (one login volume for all projects) | per-project
+profile = ""                     # a named login volume, e.g. "work": every project that names it shares those logins and no others.
+                                 #   Set it per project (airlock config edit --project), not here; it wins over scope
 
 [git]
 mode = "local"                   # local | push
